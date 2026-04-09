@@ -64,6 +64,8 @@ local st = {
     myRoundBet  = 0,
     myBalance   = startBal,
     myTurn      = false,
+    raising     = false,
+    raiseBuffer = "",
     canCheck    = false,
     callAmount  = 0,
     minRaise    = 10,
@@ -219,6 +221,16 @@ local function drawScreen()
         end
     end
 
+    -- Raise-input prompt
+    if st.raising then
+        term.setCursorPos(1, H)
+        term.setBackgroundColor(colors.black)
+        term.setTextColor(colors.yellow)
+        term.clearLine()
+        term.write("Raise $: " .. st.raiseBuffer .. "_")
+        return
+    end
+
     -- Statuslinje nederst
     term.setCursorPos(1, H)
     term.setTextColor(colors.gray)
@@ -354,7 +366,36 @@ local retries   = 0
 while true do
     local event, a, b, c = os.pullEvent()
 
-    if event == "rednet_message" then
+    if event == "char" and st.raising then
+        if a:match("%d") then
+            st.raiseBuffer = st.raiseBuffer .. a
+            drawScreen()
+        end
+
+    elseif event == "key" and st.raising then
+        if a == keys.enter then
+            local amt = tonumber(st.raiseBuffer)
+            st.raising     = false
+            st.raiseBuffer = ""
+            if amt and amt >= st.minRaise then
+                sendAction("raise", amt)
+                st.myTurn = false
+                st.msg    = "Du raised $" .. amt
+            else
+                st.msg = "Ugyldig (min $" .. st.minRaise .. ")"
+            end
+            drawScreen()
+        elseif a == keys.backspace then
+            st.raiseBuffer = st.raiseBuffer:sub(1, -2)
+            drawScreen()
+        elseif a == keys.q or a == keys.escape then
+            st.raising     = false
+            st.raiseBuffer = ""
+            st.msg         = "Raise avbrutt"
+            drawScreen()
+        end
+
+    elseif event == "rednet_message" then
         local sid, raw, proto = a, b, c
         if proto == PROTOCOL then
             local ok2, m = pcall(textutils.unserialize, raw)
@@ -412,21 +453,8 @@ while true do
                 drawScreen()
 
             elseif k == keys.r then
-                -- Raise - be om beløp
-                term.setCursorPos(1, H)
-                term.setBackgroundColor(colors.black)
-                term.setTextColor(colors.yellow)
-                term.clearLine()
-                term.write("Raise med: $")
-                local amtStr = read()
-                local amt    = tonumber(amtStr)
-                if amt and amt >= st.minRaise then
-                    sendAction("raise", amt)
-                    st.myTurn = false
-                    st.msg    = "Du raised $" .. amt
-                else
-                    st.msg = "Ugyldig beløp (min $" .. st.minRaise .. ")"
-                end
+                st.raising     = true
+                st.raiseBuffer = ""
                 drawScreen()
             end
         end
