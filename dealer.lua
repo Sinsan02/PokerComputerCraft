@@ -3,8 +3,9 @@
 -- Krav: Monitor koblet til + trådløs modem installert
 -- Kontroll: ENTER = neste fase
 
-local cards = require("poker.cards")
-local eval  = require("poker.eval")
+local dir   = fs.getDir(shell.getRunningProgram())
+local cards = dofile(fs.combine(dir, "cards.lua"))
+local eval  = dofile(fs.combine(dir, "eval.lua"))
 
 local PROTOCOL = "txpoker"
 local MIN_PLAYERS = 2

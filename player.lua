@@ -3,7 +3,8 @@
 -- Kjøres på lomme-PC (pocket computer) eller hvilken som helst PC med trådløs modem
 -- Private kort vises kun her!
 
-local cards = require("poker.cards")
+local dir   = fs.getDir(shell.getRunningProgram())
+local cards = dofile(fs.combine(dir, "cards.lua"))
 
 local PROTOCOL = "txpoker"
 
