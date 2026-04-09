@@ -387,10 +387,6 @@ while true do
             term.clear(); term.setCursorPos(1,1)
             print("Ha det!"); return
 
-        elseif k == keys.r and st.joined then
-            rednet.send(st.dealerID, textutils.serialize({type="request_state"}), PROTOCOL)
-            drawScreen()
-
         elseif st.myTurn then
             if k == keys.c then
                 -- Check eller Call
@@ -415,7 +411,7 @@ while true do
                 st.msg    = "All-in! $" .. st.myBalance
                 drawScreen()
 
-            elseif k == keys.e then
+            elseif k == keys.r then
                 -- Raise - be om beløp
                 term.setCursorPos(1, H)
                 term.setBackgroundColor(colors.black)
