@@ -603,9 +603,41 @@ local function handlePlayerMsg(senderID, msg)
         handleAction(senderID, msg)
 
     elseif msg.type == "leave" then
+        local wasCurrentPlayer = false
         for i, p in ipairs(game.players) do
-            if p.id == senderID then table.remove(game.players, i); break end
+            if p.id == senderID then
+                if game.betting and i == game.actionIdx then
+                    wasCurrentPlayer = true
+                end
+                -- Juster actionIdx om nødvendig
+                if i < game.actionIdx then
+                    game.actionIdx = game.actionIdx - 1
+                end
+                table.remove(game.players, i)
+                break
+            end
         end
+        -- Om det var deres tur, gå videre
+        if wasCurrentPlayer and game.betting and #game.players > 0 then
+            if game.actionIdx > #game.players then game.actionIdx = 1 end
+            -- Sjekk om spillet kan fortsette
+            local n, last = countActive()
+            if n <= 1 then
+                if last then autoWin(last) end
+            elseif isBettingDone() then
+                checkAutoAdvance()
+            else
+                -- Finn neste ikke-foldede spiller
+                local found = false
+                for _ = 1, #game.players do
+                    local p = game.players[game.actionIdx]
+                    if p and not p.folded and not p.allIn then found = true; break end
+                    game.actionIdx = game.actionIdx % #game.players + 1
+                end
+                if found then notifyTurn() end
+            end
+        end
+        broadcastState()
 
     elseif msg.type == "request_state" then
         sendTo(senderID, {
