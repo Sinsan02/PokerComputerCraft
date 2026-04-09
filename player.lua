@@ -281,7 +281,10 @@ local function handleMsg(senderID, msg)
         st.betting       = msg.betting or false
         st.playerData    = msg.playerData or {}
         st.winner        = nil
-        st.myTurn        = false
+        -- Ikke nullstill myTurn om det er vår tur (your_turn kom like før state)
+        if msg.currentPlayer ~= st.name then
+            st.myTurn = false
+        end
         -- Oppdater min balanse fra playerData
         for _, pd in ipairs(st.playerData) do
             if pd.name == st.name then
