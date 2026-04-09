@@ -6,10 +6,10 @@
 local BASE = "https://raw.githubusercontent.com/Sinsan02/PokerComputerCraft/main/"
 
 local FILES = {
-    {src = "poker/cards.lua",  dst = "poker/cards.lua"},
-    {src = "poker/eval.lua",   dst = "poker/eval.lua"},
-    {src = "poker/dealer.lua", dst = "poker/dealer.lua"},
-    {src = "poker/player.lua", dst = "poker/player.lua"},
+    {src = "cards.lua",  dst = "poker/cards.lua"},
+    {src = "eval.lua",   dst = "poker/eval.lua"},
+    {src = "dealer.lua", dst = "poker/dealer.lua"},
+    {src = "player.lua", dst = "poker/player.lua"},
 }
 
 local SHORTCUTS = {
