@@ -281,11 +281,9 @@ local function handleMsg(senderID, msg)
         st.betting       = msg.betting or false
         st.playerData    = msg.playerData or {}
         st.winner        = nil
-        -- Ikke nullstill myTurn om det er vår tur (your_turn kom like før state)
-        if msg.currentPlayer ~= st.name then
-            st.myTurn = false
-        end
-        -- Oppdater min balanse fra playerData
+        -- myTurn styres direkte av currentPlayer-feltet i state
+        st.myTurn = (msg.betting and msg.currentPlayer == st.name)
+        -- Oppdater min balanse og bet fra playerData
         for _, pd in ipairs(st.playerData) do
             if pd.name == st.name then
                 st.myBalance  = pd.balance
@@ -293,8 +291,15 @@ local function handleMsg(senderID, msg)
                 break
             end
         end
-        local phMsgs = {deal="Kort er delt ut!", flop="Flop!", turn="Turn!", river="River - siste kort!"}
-        st.msg = phMsgs[st.phase] or ""
+        -- Hvis det er vår tur, sett bet-info fra state
+        if st.myTurn then
+            st.canCheck   = (st.myRoundBet >= st.currentBet)
+            st.callAmount = math.max(0, st.currentBet - st.myRoundBet)
+            st.msg        = "DIN TUR! Velg handling."
+        else
+            local phMsgs = {deal="Kort er delt ut!", flop="Flop!", turn="Turn!", river="River - siste kort!"}
+            st.msg = phMsgs[st.phase] or ""
+        end
 
     elseif msg.type == "your_turn" then
         st.myTurn      = true
