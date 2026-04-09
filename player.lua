@@ -1,7 +1,6 @@
--- poker/player.lua
--- Texas Hold'em Spiller-program
--- Kjøres på lomme-PC (pocket computer) eller hvilken som helst PC med trådløs modem
--- Private kort vises kun her!
+-- player.lua
+-- Texas Hold'em Spiller (lomme-PC)
+-- Taster: C=Check/Call  R=Raise  F=Fold  A=All-in  Q=Avslutt
 
 local dir   = fs.getDir(shell.getRunningProgram())
 local cards = dofile(fs.combine(dir, "cards.lua"))
@@ -9,350 +8,431 @@ local cards = dofile(fs.combine(dir, "cards.lua"))
 local PROTOCOL = "txpoker"
 
 -- =====================================================
--- FINN TRÅDLØS MODEM
+-- TRÅDLØS MODEM
 -- =====================================================
-local modemSide = nil
-local sides = {"back","left","right","top","bottom","front"}
-for _, side in ipairs(sides) do
-    if peripheral.getType(side) == "modem" then
+local modemSide
+for _, side in ipairs({"back","left","right","top","bottom","front"}) do
+    local t = peripheral.getType(side)
+    if t == "modem" then
         local p = peripheral.wrap(side)
-        if p.isWireless and p.isWireless() then
-            modemSide = side
-            break
-        end
+        if p.isWireless and p.isWireless() then modemSide = side; break end
     end
 end
 if not modemSide then
-    -- Prøv peripheral.find som backup
-    local found, foundName = peripheral.find("modem", function(n, p)
-        return p.isWireless and p.isWireless()
-    end)
+    local found = peripheral.find("modem", function(_, p) return p.isWireless and p.isWireless() end)
     if found then modemSide = peripheral.getName(found) end
 end
-
 if not modemSide then
-    print("FEIL: Ingen trådløs modem funnet!")
-    print("Pocket-PCer har innebygd modem på 'back'.")
-    print("Vanlige PCer: koble til trådløs modem.")
-    return
+    print("FEIL: Ingen trådløs modem!"); return
 end
 rednet.open(modemSide)
 
 -- =====================================================
--- SPILLER-NAVN
+-- OPPSTART - NAVN OG BALANSE
 -- =====================================================
 term.setBackgroundColor(colors.black)
 term.setTextColor(colors.yellow)
-term.clear()
-term.setCursorPos(1, 1)
-print("=== TEXAS HOLD'EM POKER ===")
+term.clear(); term.setCursorPos(1,1)
+print("=== TEXAS HOLD'EM ===")
 term.setTextColor(colors.white)
 print("")
-print("Skriv inn ditt navn:")
+print("Navn:")
 term.setTextColor(colors.cyan)
 local playerName = read()
 if not playerName or playerName:match("^%s*$") then
     playerName = "Spiller" .. os.getComputerID()
 end
-playerName = playerName:sub(1, 14):match("^%s*(.-)%s*$") or playerName
+playerName = playerName:sub(1,14):match("^%s*(.-)%s*$") or playerName
+
+term.setTextColor(colors.white)
+print("Start-balanse (100-10000):")
+term.setTextColor(colors.cyan)
+local balInput   = tonumber(read()) or 1000
+local startBal   = math.max(100, math.min(10000, balInput))
 
 -- =====================================================
--- SPILLTILSTAND
+-- TILSTAND
 -- =====================================================
-local state = {
+local st = {
     joined      = false,
     dealerID    = nil,
-    playerName  = playerName,
+    name        = playerName,
     hand        = {},
     community   = {},
     pot         = 0,
+    currentBet  = 0,
+    myRoundBet  = 0,
+    myBalance   = startBal,
+    myTurn      = false,
+    canCheck    = false,
+    callAmount  = 0,
+    minRaise    = 10,
     phase       = "lobby",
     winner      = nil,
     winHand     = nil,
-    players     = {},
-    message     = "Kobler til dealer...",
+    playerData  = {},
+    currentPlayer = nil,
+    betting     = false,
+    msg         = "Kobler til...",
 }
 
--- =====================================================
--- SKJERMTEGNING
--- =====================================================
 local W, H = term.getSize()
 
--- Tegn et kort inline som  [A♥] med farge
+-- =====================================================
+-- TEGNING
+-- =====================================================
 local function writeCard(c)
     term.setBackgroundColor(colors.white)
     term.setTextColor(colors.black)
     term.write("[")
     term.setTextColor(cards.CLR[c.suit])
-    -- Pad verdi til 2 tegn
-    local valStr = c.value
-    if #valStr == 1 then valStr = valStr .. " " end
-    term.write(valStr .. cards.SYM[c.suit])
+    term.write(c.value .. cards.SYM[c.suit])
     term.setTextColor(colors.black)
     term.write("]")
     term.setBackgroundColor(colors.black)
     term.write(" ")
 end
 
-local function hline(y, char, clr)
+local function hline(y, clr)
     term.setCursorPos(1, y)
     term.setTextColor(clr or colors.gray)
     term.setBackgroundColor(colors.black)
-    term.write(string.rep(char or "-", W))
-end
-
-local function cls()
-    term.setBackgroundColor(colors.black)
-    term.clear()
-end
-
-local function at(x, y)
-    term.setCursorPos(x, y)
+    term.write(string.rep("-", W))
 end
 
 local function drawScreen()
-    cls()
+    term.setBackgroundColor(colors.black)
+    term.clear()
 
-    -- Header
-    at(1, 1)
+    -- Rad 1: Header
+    term.setCursorPos(1, 1)
     term.setBackgroundColor(colors.green)
     term.setTextColor(colors.yellow)
-    local header = " POKER - " .. state.playerName .. " "
-    local padded = string.format("%-" .. W .. "s", header)
-    term.write(padded:sub(1, W))
+    local hdr = " POKER - " .. st.name .. " "
+    term.write(string.format("%-" .. W .. "s", hdr):sub(1, W))
     term.setBackgroundColor(colors.black)
 
-    -- Fase
-    at(1, 2)
-    term.setTextColor(colors.lightGray)
-    local phaseStr = "Fase: " .. state.phase:upper()
-    if state.dealerID then
-        phaseStr = phaseStr .. "  |  Dealer: #" .. state.dealerID
-    end
-    term.write(phaseStr)
-
-    hline(3, "-", colors.gray)
-
-    -- Din hånd (private kort)
-    at(1, 4)
-    term.setTextColor(colors.white)
-    term.write("DIN HÅND (privat):")
-
-    at(1, 5)
-    if #state.hand == 0 then
-        term.setTextColor(colors.gray)
-        term.write("[Ingen kort ennå]")
-    else
-        for _, c in ipairs(state.hand) do
-            writeCard(c)
-        end
-    end
-
-    hline(7, "-", colors.gray)
-
-    -- Bordkort (community)
-    at(1, 8)
-    term.setTextColor(colors.white)
-    term.write("BORDKORT:")
-
-    at(1, 9)
-    if #state.community == 0 then
-        term.setTextColor(colors.gray)
-        if state.phase == "lobby" or state.phase == "deal" then
-            term.write("[Ikke delt ut ennå]")
-        else
-            term.write("[Ingen kort]")
-        end
-    else
-        for _, c in ipairs(state.community) do
-            writeCard(c)
-        end
-    end
-
-    hline(11, "-", colors.gray)
-
-    -- Info-rad
-    at(1, 12)
-    term.setTextColor(colors.yellow)
-    term.write("Pott: " .. state.pot)
-
-    -- Spillerliste
-    if #state.players > 0 then
-        at(1, 13)
-        term.setTextColor(colors.lightGray)
-        local pList = "Spillere: " .. table.concat(state.players, ", ")
-        if #pList > W then pList = pList:sub(1, W - 3) .. "..." end
-        term.write(pList)
-    end
-
-    -- Vinner
-    if state.winner then
-        hline(H - 3, "=", colors.yellow)
-        at(1, H - 2)
+    -- Rad 2: Fase og tur
+    term.setCursorPos(1, 2)
+    if st.myTurn then
         term.setTextColor(colors.yellow)
-        local wStr = "VINNER: " .. state.winner
-        if #wStr > W then wStr = wStr:sub(1, W) end
-        term.write(wStr)
-        at(1, H - 1)
-        term.setTextColor(colors.white)
-        local hStr = "  " .. (state.winHand or "")
-        if #hStr > W then hStr = hStr:sub(1, W) end
-        term.write(hStr)
+        term.write("*** DIN TUR ***")
+    else
+        term.setTextColor(colors.lightGray)
+        local info = "Fase: " .. st.phase:upper()
+        if st.betting and st.currentPlayer and not st.myTurn then
+            info = info .. " | Tur: " .. st.currentPlayer
+        end
+        term.write(info:sub(1, W))
     end
 
-    -- Statusmelding nederst
-    at(1, H)
-    term.setBackgroundColor(colors.black)
+    hline(3)
+
+    -- Rad 4-5: Din hånd
+    term.setCursorPos(1, 4)
+    term.setTextColor(colors.white)
+    term.write("DIN HAND:")
+    term.setCursorPos(1, 5)
+    if #st.hand == 0 then
+        term.setTextColor(colors.gray); term.write("Venter på kort...")
+    else
+        for _, c in ipairs(st.hand) do writeCard(c) end
+    end
+
+    hline(6)
+
+    -- Rad 7-8: Bordkort
+    term.setCursorPos(1, 7)
+    term.setTextColor(colors.white)
+    term.write("BORD:")
+    term.setCursorPos(1, 8)
+    if #st.community == 0 then
+        term.setTextColor(colors.gray); term.write("Ikke delt ennå")
+    else
+        for _, c in ipairs(st.community) do writeCard(c) end
+    end
+
+    hline(9)
+
+    -- Rad 10-11: Pott og balanse
+    term.setCursorPos(1, 10)
+    term.setTextColor(colors.yellow)
+    term.write(string.format("Pott: $%-5d  Bet: $%d", st.pot, st.currentBet):sub(1,W))
+    term.setCursorPos(1, 11)
+    term.setTextColor(colors.white)
+    term.write(string.format("Balanse: $%-5d  Din bet: $%d", st.myBalance, st.myRoundBet):sub(1,W))
+
+    hline(12)
+
+    -- Rad 13+: Handlinger eller venter
+    if st.myTurn then
+        term.setCursorPos(1, 13)
+        term.setTextColor(colors.cyan)
+        if st.canCheck then
+            term.write("[C]heck  [R]aise  [F]old")
+        else
+            term.write(string.format("[C]all $%d  [R]aise  [F]old", st.callAmount):sub(1,W))
+        end
+        term.setCursorPos(1, 14)
+        term.setTextColor(colors.lightGray)
+        term.write("[A]ll-in ($" .. st.myBalance .. ")")
+    elseif st.phase == "showdown" and st.winner then
+        hline(13, colors.yellow)
+        term.setCursorPos(1, 14)
+        if st.winner == st.name or st.winner:find(st.name) then
+            term.setTextColor(colors.yellow)
+            term.write("DU VANT! " .. (st.winHand or ""))
+        else
+            term.setTextColor(colors.white)
+            term.write(("Vinner: " .. st.winner):sub(1,W))
+            term.setCursorPos(1, 15)
+            term.setTextColor(colors.lightGray)
+            term.write((st.winHand or ""):sub(1,W))
+        end
+    elseif st.phase == "lobby" then
+        term.setCursorPos(1, 13)
+        term.setTextColor(colors.gray)
+        term.write("Venter på at dealer starter...")
+    else
+        term.setCursorPos(1, 13)
+        term.setTextColor(colors.gray)
+        local wt = st.currentPlayer and ("Venter på: " .. st.currentPlayer) or "Venter..."
+        term.write(wt:sub(1,W))
+    end
+
+    -- Spillerliste (kompakt, siste rader)
+    local listStart = 16
+    if #st.playerData > 0 and H >= listStart + 1 then
+        hline(listStart - 1)
+        for i, pd in ipairs(st.playerData) do
+            if listStart + i - 1 > H - 1 then break end
+            term.setCursorPos(1, listStart + i - 1)
+            local isMe = pd.name == st.name
+            local isCur = pd.name == st.currentPlayer
+            if isCur then term.setTextColor(colors.cyan)
+            elseif isMe then term.setTextColor(colors.yellow)
+            elseif pd.folded then term.setTextColor(colors.gray)
+            else term.setTextColor(colors.white)
+            end
+            local status = pd.folded and "F" or (pd.allIn and "AI" or "")
+            term.write(string.format("%-9s $%-5d %s", pd.name:sub(1,9), pd.balance, status):sub(1,W))
+        end
+    end
+
+    -- Statuslinje nederst
+    term.setCursorPos(1, H)
     term.setTextColor(colors.gray)
-    local msg = state.message or ""
-    if #msg > W then msg = msg:sub(1, W) end
-    term.write(string.format("%-" .. W .. "s", msg))
+    term.setBackgroundColor(colors.black)
+    term.write(string.format("%-" .. W .. "s", (st.msg or "")):sub(1,W))
 end
 
-local function setMsg(m)
-    state.message = m
+-- =====================================================
+-- SENDE HANDLINGER
+-- =====================================================
+local function sendAction(action, amount)
+    if not st.dealerID then return end
+    local m = {type="action", action=action}
+    if amount then m.amount = amount end
+    rednet.send(st.dealerID, textutils.serialize(m), PROTOCOL)
 end
 
 -- =====================================================
 -- MELDINGSHÅNDTERING
 -- =====================================================
 local function handleMsg(senderID, msg)
-    local fromDealer = (state.dealerID == nil) or (senderID == state.dealerID)
+    local fromDealer = (st.dealerID == nil) or (senderID == st.dealerID)
 
-    if msg.type == "joined" and not state.joined then
-        state.dealerID   = senderID
-        state.joined     = true
-        state.playerName = msg.name or playerName
-        state.phase      = "lobby"
-        setMsg("Ble med som spiller #" .. (msg.playerID or "?") .. ". Venter pa start...")
+    if msg.type == "joined" and not st.joined then
+        st.dealerID  = senderID
+        st.joined    = true
+        st.name      = msg.name or playerName
+        st.myBalance = msg.balance or startBal
+        st.phase     = "lobby"
+        st.msg       = "Ble med! Venter på start..."
 
-    elseif not fromDealer then
-        -- Ignorer meldinger fra andre enn dealer etter join
-        return
+    elseif not fromDealer then return
 
     elseif msg.type == "error" then
-        setMsg("FEIL: " .. (msg.msg or "Ukjent feil"))
+        st.msg = "FEIL: " .. (msg.msg or "")
 
     elseif msg.type == "hand" then
-        state.hand  = msg.cards or {}
-        state.phase = msg.phase or state.phase
-        setMsg("Du har fatt kortene dine! Se over.")
+        st.hand  = msg.cards or {}
+        st.phase = msg.phase or st.phase
+        st.msg   = "Kort mottatt! Sjekk hånden din."
 
     elseif msg.type == "state" then
-        state.phase     = msg.phase or state.phase
-        state.community = msg.community or {}
-        state.pot       = msg.pot or 0
-        state.players   = msg.players or {}
-        state.winner    = nil
-        state.winHand   = nil
+        st.phase         = msg.phase or st.phase
+        st.community     = msg.community or {}
+        st.pot           = msg.pot or 0
+        st.currentBet    = msg.currentBet or 0
+        st.currentPlayer = msg.currentPlayer
+        st.betting       = msg.betting or false
+        st.playerData    = msg.playerData or {}
+        st.winner        = nil
+        st.myTurn        = false
+        -- Oppdater min balanse fra playerData
+        for _, pd in ipairs(st.playerData) do
+            if pd.name == st.name then
+                st.myBalance  = pd.balance
+                st.myRoundBet = pd.roundBet
+                break
+            end
+        end
+        local phMsgs = {deal="Kort er delt ut!", flop="Flop!", turn="Turn!", river="River - siste kort!"}
+        st.msg = phMsgs[st.phase] or ""
 
-        local msgs = {
-            deal  = "Kort er delt. Sjekk handen din!",
-            flop  = "Flop er vist - 3 bordkort.",
-            turn  = "Turn - 4. bordkort er vist.",
-            river = "River - siste bordkort. Klar for showdown?",
-        }
-        setMsg(msgs[state.phase] or "")
+    elseif msg.type == "your_turn" then
+        st.myTurn      = true
+        st.canCheck    = msg.canCheck or false
+        st.callAmount  = msg.callAmount or 0
+        st.currentBet  = msg.currentBet or 0
+        st.myRoundBet  = msg.roundBet or 0
+        st.myBalance   = msg.balance or st.myBalance
+        st.pot         = msg.pot or st.pot
+        st.minRaise    = msg.minRaise or 10
+        st.msg         = "DIN TUR! Velg handling."
 
     elseif msg.type == "showdown" then
-        state.phase     = "showdown"
-        state.community = msg.community or {}
-        state.players   = msg.players or {}
-        state.winHand   = msg.winHand
-
+        st.phase      = "showdown"
+        st.community  = msg.community or {}
+        st.playerData = msg.playerData or {}
+        st.winHand    = msg.winHand
+        st.myTurn     = false
+        st.betting    = false
         if msg.winners and #msg.winners > 0 then
-            state.winner = table.concat(msg.winners, " & ")
-            if #msg.winners > 1 then
-                state.winner = state.winner .. " (Uavgjort!)"
+            st.winner = table.concat(msg.winners, " & ")
+            local iWon = false
+            for _, w in ipairs(msg.winners) do
+                if w == st.name then iWon = true; break end
             end
-            -- Sjekk om vi vant
-            for _, wName in ipairs(msg.winners) do
-                if wName == state.playerName then
-                    setMsg("Du VANT runden! Gratulerer!")
-                    break
-                else
-                    setMsg("Vinner: " .. state.winner)
-                end
+            st.msg = iWon and "Du vant!" or ("Vinner: " .. st.winner)
+        end
+        for _, pd in ipairs(st.playerData) do
+            if pd.name == st.name then
+                st.myBalance  = pd.balance
+                st.myRoundBet = pd.roundBet
+                break
             end
-        else
-            setMsg("Showdown!")
         end
 
     elseif msg.type == "lobby" then
-        state.phase     = "lobby"
-        state.hand      = {}
-        state.community = {}
-        state.pot       = 0
-        state.winner    = nil
-        state.winHand   = nil
-        state.players   = msg.players or {}
-        setMsg("Ny runde starter snart. Venter...")
-        -- Meld på igjen
-        rednet.broadcast(textutils.serialize({type="join", name=playerName}), PROTOCOL)
+        st.phase      = "lobby"
+        st.hand       = {}
+        st.community  = {}
+        st.pot        = 0
+        st.currentBet = 0
+        st.myRoundBet = 0
+        st.winner     = nil
+        st.myTurn     = false
+        st.betting    = false
+        st.playerData = msg.playerData or {}
+        for _, pd in ipairs(st.playerData) do
+            if pd.name == st.name then st.myBalance = pd.balance; break end
+        end
+        st.msg = "Ny runde. Venter på dealer..."
+        rednet.broadcast(textutils.serialize({
+            type="join", name=playerName, balance=st.myBalance
+        }), PROTOCOL)
     end
 end
 
 -- =====================================================
--- KOBLE TIL DEALER
+-- KOBLE TIL
 -- =====================================================
-setMsg("Sender koblings-forspørsel...")
+st.msg = "Sender forespørsel..."
 drawScreen()
-rednet.broadcast(textutils.serialize({type="join", name=playerName}), PROTOCOL)
+rednet.broadcast(textutils.serialize({
+    type="join", name=playerName, balance=startBal
+}), PROTOCOL)
 
 -- =====================================================
 -- HOVED-LØKKE
 -- =====================================================
-local joinTimer    = os.startTimer(3)   -- prøv å koble til igjen etter 3 sek
-local retryCount   = 0
+local joinTimer = os.startTimer(3)
+local retries   = 0
 
 while true do
     local event, a, b, c = os.pullEvent()
 
     if event == "rednet_message" then
-        local senderID, rawMsg, protocol = a, b, c
-        if protocol == PROTOCOL then
-            local ok, msg = pcall(textutils.unserialize, rawMsg)
-            if ok and type(msg) == "table" then
-                handleMsg(senderID, msg)
+        local sid, raw, proto = a, b, c
+        if proto == PROTOCOL then
+            local ok2, m = pcall(textutils.unserialize, raw)
+            if ok2 and type(m) == "table" then
+                handleMsg(sid, m)
                 drawScreen()
             end
         end
 
     elseif event == "timer" and a == joinTimer then
-        if not state.joined then
-            retryCount = retryCount + 1
-            setMsg("Prøver å koble til... (" .. retryCount .. ")")
-            rednet.broadcast(textutils.serialize({type="join", name=playerName}), PROTOCOL)
+        if not st.joined then
+            retries = retries + 1
+            st.msg  = "Prøver igjen... (" .. retries .. ")"
+            rednet.broadcast(textutils.serialize({
+                type="join", name=playerName, balance=startBal
+            }), PROTOCOL)
             drawScreen()
             joinTimer = os.startTimer(3)
-        else
-            -- Spør om tilstand ved koble-til på nytt
-            if state.dealerID then
-                rednet.send(state.dealerID,
-                    textutils.serialize({type="request_state"}), PROTOCOL)
-            end
         end
 
     elseif event == "key" then
-        -- Trykk R for å be om oppdatert tilstand
-        if a == keys.r and state.dealerID then
-            rednet.send(state.dealerID,
-                textutils.serialize({type="request_state"}), PROTOCOL)
-            setMsg("Ber om oppdatering...")
-            drawScreen()
-        end
-        -- Trykk Q for å forlate
-        if a == keys.q then
-            if state.dealerID then
-                rednet.send(state.dealerID,
-                    textutils.serialize({type="leave"}), PROTOCOL)
+        local k = a
+
+        if k == keys.q then
+            if st.dealerID then
+                rednet.send(st.dealerID, textutils.serialize({type="leave"}), PROTOCOL)
             end
             term.setBackgroundColor(colors.black)
             term.setTextColor(colors.white)
-            term.clear()
-            term.setCursorPos(1,1)
-            print("Du har forlatt spillet. Ha det!")
-            return
+            term.clear(); term.setCursorPos(1,1)
+            print("Ha det!"); return
+
+        elseif k == keys.r and st.joined then
+            rednet.send(st.dealerID, textutils.serialize({type="request_state"}), PROTOCOL)
+            drawScreen()
+
+        elseif st.myTurn then
+            if k == keys.c then
+                -- Check eller Call
+                if st.canCheck then
+                    sendAction("check")
+                else
+                    sendAction("call")
+                end
+                st.myTurn = false
+                st.msg    = st.canCheck and "Du sjekket." or ("Du calte $" .. st.callAmount)
+                drawScreen()
+
+            elseif k == keys.f then
+                sendAction("fold")
+                st.myTurn = false
+                st.msg    = "Du foldet."
+                drawScreen()
+
+            elseif k == keys.a then
+                sendAction("allin")
+                st.myTurn = false
+                st.msg    = "All-in! $" .. st.myBalance
+                drawScreen()
+
+            elseif k == keys.e then
+                -- Raise - be om beløp
+                term.setCursorPos(1, H)
+                term.setBackgroundColor(colors.black)
+                term.setTextColor(colors.yellow)
+                term.clearLine()
+                term.write("Raise med: $")
+                local amtStr = read()
+                local amt    = tonumber(amtStr)
+                if amt and amt >= st.minRaise then
+                    sendAction("raise", amt)
+                    st.myTurn = false
+                    st.msg    = "Du raised $" .. amt
+                else
+                    st.msg = "Ugyldig beløp (min $" .. st.minRaise .. ")"
+                end
+                drawScreen()
+            end
         end
     end
 end
