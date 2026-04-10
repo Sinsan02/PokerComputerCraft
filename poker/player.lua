@@ -28,27 +28,72 @@ end
 rednet.open(modemSide)
 
 -- =====================================================
+-- CASINO-SESJON
+-- =====================================================
+local CASINO_PROTOCOL = "casino"
+local SESSION_FILE    = "/casino_session"
+local casinoUser      = nil
+local casinoStart     = 0
+
+local function casinoRequest(msg)
+    local sid = rednet.lookup(CASINO_PROTOCOL)
+    if not sid then return nil end
+    rednet.send(sid, msg, CASINO_PROTOCOL)
+    local _, resp = rednet.receive(CASINO_PROTOCOL, 3)
+    return resp
+end
+
+local function syncCasinoOnExit(finalChips)
+    if not casinoUser then return end
+    casinoRequest({
+        type     = "update_chips",
+        username = casinoUser,
+        delta    = finalChips - casinoStart,
+    })
+end
+
+-- =====================================================
 -- OPPSTART - NAVN OG BALANSE
 -- =====================================================
-term.setBackgroundColor(colors.black)
-term.setTextColor(colors.yellow)
-term.clear(); term.setCursorPos(1,1)
-print("=== TEXAS HOLD'EM ===")
-term.setTextColor(colors.white)
-print("")
-print("Navn:")
-term.setTextColor(colors.cyan)
-local playerName = read()
-if not playerName or playerName:match("^%s*$") then
-    playerName = "Spiller" .. os.getComputerID()
-end
-playerName = playerName:sub(1,14):match("^%s*(.-)%s*$") or playerName
+local playerName, startBal
 
-term.setTextColor(colors.white)
-print("Start-balanse (100-10000):")
-term.setTextColor(colors.cyan)
-local balInput   = tonumber(read()) or 1000
-local startBal   = math.max(100, math.min(10000, balInput))
+-- Les casino-sesjon hvis startet fra casino-appen
+if fs.exists(SESSION_FILE) then
+    local f = fs.open(SESSION_FILE, "r")
+    local sess = textutils.unserialize(f.readAll())
+    f.close()
+    fs.delete(SESSION_FILE)
+    if type(sess) == "table" and sess.username then
+        casinoUser = sess.username
+        playerName = sess.username
+        -- Synk balanse mot casino-server
+        local resp = casinoRequest({type="get_balance", username=casinoUser})
+        startBal = (resp and resp.ok and resp.chips) or sess.chips or 1000
+        casinoStart = startBal
+    end
+end
+
+-- Fallback: spor uten casino-konto
+if not playerName then
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.yellow)
+    term.clear(); term.setCursorPos(1,1)
+    print("=== TEXAS HOLD'EM ===")
+    term.setTextColor(colors.white)
+    print("")
+    print("Navn:")
+    term.setTextColor(colors.cyan)
+    playerName = read()
+    if not playerName or playerName:match("^%s*$") then
+        playerName = "Spiller" .. os.getComputerID()
+    end
+    playerName = playerName:sub(1,14):match("^%s*(.-)%s*$") or playerName
+    term.setTextColor(colors.white)
+    print("Start-balanse (100-10000):")
+    term.setTextColor(colors.cyan)
+    local balInput = tonumber(read()) or 1000
+    startBal = math.max(100, math.min(10000, balInput))
+end
 
 -- =====================================================
 -- TILSTAND
@@ -431,6 +476,7 @@ while true do
             if st.dealerID then
                 rednet.send(st.dealerID, textutils.serialize({type="leave"}), PROTOCOL)
             end
+            syncCasinoOnExit(st.myBalance)
             term.setBackgroundColor(colors.black)
             term.setTextColor(colors.white)
             term.clear(); term.setCursorPos(1,1)

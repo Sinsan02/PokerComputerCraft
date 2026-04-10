@@ -1,27 +1,56 @@
 -- casino/client.lua
--- Casino-app for lomme-PC (pocket computer)
+-- Casino-app for lomme-PC / pocket computer
 -- Krev: Tradlos modem
--- Start: casino_app  (snarvei satt av install.lua)
 
-local PROTOCOL = "casino"
-local TIMEOUT  = 5
+local PROTOCOL     = "casino"
+local TIMEOUT      = 5
+local SESSION_FILE = "/casino_session"
 
-local W = term.getSize()
+local W, H = term.getSize()
 local session = {username=nil, chips=0, is_admin=false}
 
--- ── Rednet ────────────────────────────────────────────────────────
+-- ── Modem ─────────────────────────────────────────────────────────
 local function openModem()
     local modem = peripheral.find("modem", function(_, m) return m.isWireless() end)
     if not modem then error("Ingen tradlos modem!", 0) end
     rednet.open(peripheral.getName(modem))
 end
 
-local function request(msg)
+local function casinoReq(msg)
     local sid = rednet.lookup(PROTOCOL)
     if not sid then return nil end
     rednet.send(sid, msg, PROTOCOL)
     local _, resp = rednet.receive(PROTOCOL, TIMEOUT)
     return resp
+end
+
+-- ── Button system ─────────────────────────────────────────────────
+local btns = {}
+
+local function addBtn(id, y, text, bg, fg)
+    btns[#btns+1] = {id=id, x=3, y=y, w=W-4, text=text, bg=bg, fg=fg}
+end
+
+local function drawBtns()
+    for _, b in ipairs(btns) do
+        term.setCursorPos(b.x, b.y)
+        term.setBackgroundColor(b.bg)
+        term.setTextColor(b.fg)
+        term.write(string.rep(" ", b.w))
+        local tx = b.x + math.floor((b.w - #b.text) / 2)
+        term.setCursorPos(tx, b.y)
+        term.write(b.text)
+    end
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
+end
+
+local function clickBtn(mx, my)
+    for _, b in ipairs(btns) do
+        if my == b.y and mx >= b.x and mx < b.x + b.w then
+            return b.id
+        end
+    end
 end
 
 -- ── UI helpers ────────────────────────────────────────────────────
@@ -31,179 +60,222 @@ local function cls()
     term.setCursorPos(1, 1)
 end
 
-local function header(title)
+local function drawHeader(title)
+    term.setCursorPos(1, 1)
+    term.setBackgroundColor(colors.green)
     term.setTextColor(colors.yellow)
-    print("=== " .. title .. " ===")
+    local line = string.format("%-" .. W .. "s", "")
+    term.write(line)
+    local tx = math.floor((W - #title) / 2) + 1
+    term.setCursorPos(tx, 1)
+    term.write(title)
+    term.setBackgroundColor(colors.black)
+    term.setCursorPos(1, 2)
     term.setTextColor(colors.gray)
-    print(string.rep("-", W))
+    term.write(string.rep("-", W))
     term.setTextColor(colors.white)
 end
 
-local function prompt(label)
-    term.setTextColor(colors.cyan)
-    io.write(label .. ": ")
+local function inputRow(y, label, masked)
+    term.setCursorPos(1, y)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.lightGray)
+    term.clearLine()
+    term.write(label)
+    term.setCursorPos(1, y + 1)
+    term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.white)
-    return read()
+    term.clearLine()
+    local val = masked and read("*") or read()
+    term.setBackgroundColor(colors.black)
+    return val
 end
 
-local function promptPass(label)
-    term.setTextColor(colors.cyan)
-    io.write(label .. ": ")
-    term.setTextColor(colors.white)
-    return read("*")
+local function showMsg(text, clr)
+    term.setCursorPos(1, H)
+    term.setBackgroundColor(clr == colors.red and colors.red or colors.black)
+    term.setTextColor(clr == colors.red and colors.white or (clr or colors.lightGray))
+    term.clearLine()
+    term.write((" " .. text):sub(1, W))
+    term.setBackgroundColor(colors.black)
 end
 
-local function msg(text, clr)
-    term.setTextColor(clr or colors.white)
-    print(text)
-    term.setTextColor(colors.white)
-end
-
-local function waitKey()
-    term.setTextColor(colors.gray)
-    print("\nTrykk en tast...")
-    os.pullEvent("key")
-end
-
--- ── Auth screens ──────────────────────────────────────────────────
+-- ── Login screen ──────────────────────────────────────────────────
 local function screenLogin()
-    while true do
-        cls()
-        header("LOGG INN")
-        print("")
-        local username = prompt("Brukernavn")
-        local password = promptPass("Passord")
-        print("")
-        msg("Kobler til...", colors.lightGray)
-        local resp = request({type="login", username=username, password=password})
-        if not resp then
-            msg("Finner ikke serveren!", colors.red); waitKey()
-        elseif not resp.ok then
-            msg("Feil: " .. (resp.msg or "?"), colors.red); waitKey()
-        else
-            session.username = username
-            session.chips    = resp.chips
-            session.is_admin = resp.is_admin
-            return
-        end
-    end
-end
+    cls(); btns = {}
+    drawHeader("LOGG INN")
+    local username = inputRow(3, "Brukernavn:", false)
+    local password = inputRow(6, "Passord:", true)
+    addBtn("ok",   9,  "LOGG INN", colors.green, colors.black)
+    addBtn("back", 11, "Tilbake",  colors.gray,  colors.white)
+    drawBtns()
 
-local function screenRegister()
     while true do
-        cls()
-        header("REGISTRER")
-        print("")
-        local username = prompt("Brukernavn")
-        local password = promptPass("Passord")
-        local confirm  = promptPass("Bekreft passord")
-        print("")
-        if password ~= confirm then
-            msg("Passordene stemmer ikke!", colors.red); waitKey()
-        elseif #username < 2 then
-            msg("Brukernavn for kort!", colors.red); waitKey()
-        elseif #password < 3 then
-            msg("Passord for kort (min 3)!", colors.red); waitKey()
-        else
-            msg("Oppretter bruker...", colors.lightGray)
-            local resp = request({type="register", username=username, password=password})
-            if not resp then
-                msg("Finner ikke serveren!", colors.red); waitKey()
-            elseif not resp.ok then
-                msg("Feil: " .. (resp.msg or "?"), colors.red); waitKey()
-            else
-                if resp.is_admin then
-                    msg("Konto opprettet! Du er admin.", colors.yellow)
+        local ev, _, mx, my = os.pullEvent()
+        if ev == "mouse_click" then
+            local bid = clickBtn(mx, my)
+            if bid == "ok" then
+                showMsg("Kobler til...", colors.lightGray)
+                local resp = casinoReq({type="login", username=username, password=password})
+                if not resp then
+                    showMsg("Finner ikke serveren!", colors.red)
+                elseif not resp.ok then
+                    showMsg(resp.msg or "Feil!", colors.red)
                 else
-                    msg("Konto opprettet!", colors.green)
+                    session.username = username
+                    session.chips    = resp.chips
+                    session.is_admin = resp.is_admin
+                    return true
                 end
-                waitKey()
-                return
+            elseif bid == "back" then
+                return false
             end
         end
     end
 end
 
-local function screenAuth()
+-- ── Register screen ───────────────────────────────────────────────
+local function screenRegister()
+    cls(); btns = {}
+    drawHeader("REGISTRER")
+    local username = inputRow(3, "Brukernavn:", false)
+    local password = inputRow(6, "Passord:", true)
+    local confirm  = inputRow(9, "Bekreft passord:", true)
+    addBtn("ok",   12, "OPPRETT BRUKER", colors.blue,  colors.white)
+    addBtn("back", 14, "Tilbake",        colors.gray,  colors.white)
+    drawBtns()
+
     while true do
-        cls()
-        header("CASINO")
-        print("")
-        msg("1. Logg inn")
-        msg("2. Registrer ny bruker")
-        msg("3. Avslutt")
-        print("")
-        term.setTextColor(colors.cyan)
-        io.write("Valg: ")
-        term.setTextColor(colors.white)
-        local c = read()
-        if c == "1" then
-            screenLogin(); return
-        elseif c == "2" then
-            screenRegister()
-            screenLogin(); return
-        elseif c == "3" then
-            cls(); return false
+        local ev, _, mx, my = os.pullEvent()
+        if ev == "mouse_click" then
+            local bid = clickBtn(mx, my)
+            if bid == "ok" then
+                if #username < 2 then
+                    showMsg("Brukernavn for kort!", colors.red)
+                elseif #password < 3 then
+                    showMsg("Passord for kort (min 3)!", colors.red)
+                elseif password ~= confirm then
+                    showMsg("Passordene stemmer ikke!", colors.red)
+                else
+                    showMsg("Oppretter bruker...", colors.lightGray)
+                    local resp = casinoReq({type="register", username=username, password=password})
+                    if not resp then
+                        showMsg("Serverfeil!", colors.red)
+                    elseif not resp.ok then
+                        showMsg(resp.msg or "Feil!", colors.red)
+                    else
+                        -- Auto-login etter registrering
+                        local resp2 = casinoReq({type="login", username=username, password=password})
+                        if resp2 and resp2.ok then
+                            session.username = username
+                            session.chips    = resp2.chips
+                            session.is_admin = resp2.is_admin
+                        end
+                        return true
+                    end
+                end
+            elseif bid == "back" then
+                return false
+            end
         end
     end
-    return true
+end
+
+-- ── Auth menu ─────────────────────────────────────────────────────
+local function screenAuth()
+    while true do
+        cls(); btns = {}
+        drawHeader("CASINO")
+        addBtn("login",    5, "LOGG INN",       colors.green,   colors.black)
+        addBtn("register", 8, "REGISTRER",      colors.blue,    colors.white)
+        addBtn("quit",    11, "AVSLUTT",        colors.gray,    colors.lightGray)
+        drawBtns()
+
+        local ev, _, mx, my = os.pullEvent("mouse_click")
+        local bid = clickBtn(mx, my)
+        if bid == "login" then
+            if screenLogin() then return end
+        elseif bid == "register" then
+            if screenRegister() then return end
+        elseif bid == "quit" then
+            cls(); os.shutdown()
+        end
+    end
 end
 
 -- ── Game menu ─────────────────────────────────────────────────────
 local function refreshBalance()
-    local resp = request({type="get_balance", username=session.username})
+    local resp = casinoReq({type="get_balance", username=session.username})
     if resp and resp.ok then session.chips = resp.chips end
 end
 
 local function screenGames()
-    cls()
-    header("SPILL")
-    print("")
-    msg("1. Texas Hold'em Poker", colors.white)
-    msg("2. Blackjack           (kommer snart)", colors.gray)
-    msg("3. Rulett              (kommer snart)", colors.gray)
-    msg("0. Tilbake", colors.white)
-    print("")
-    term.setTextColor(colors.cyan)
-    io.write("Valg: ")
-    term.setTextColor(colors.white)
-    local c = read()
-    if c == "1" then
-        shell.run("poker/player")
+    while true do
         refreshBalance()
+        cls(); btns = {}
+        drawHeader("VELG SPILL")
+
+        term.setCursorPos(1, 3)
+        term.setTextColor(colors.yellow)
+        term.write("  Chips: " .. session.chips .. " kr")
+
+        addBtn("poker",     5, "Texas Hold'em Poker",  colors.green,  colors.black)
+        addBtn("blackjack", 8, "Blackjack  (snart)",   colors.gray,   colors.lightGray)
+        addBtn("rulett",   11, "Rulett     (snart)",   colors.gray,   colors.lightGray)
+        addBtn("back",     14, "Tilbake",              colors.red,    colors.white)
+        drawBtns()
+
+        local ev, _, mx, my = os.pullEvent("mouse_click")
+        local bid = clickBtn(mx, my)
+        if bid == "poker" then
+            if session.chips <= 0 then
+                showMsg("Ikke nok chips! Ga til kassen.", colors.red)
+                os.sleep(2)
+            else
+                -- Skriv session-fil slik at poker vet hvem du er
+                local f = fs.open(SESSION_FILE, "w")
+                f.write(textutils.serialize({
+                    username = session.username,
+                    chips    = session.chips,
+                }))
+                f.close()
+                shell.run("poker/player")
+                refreshBalance()
+            end
+        elseif bid == "back" then
+            return
+        end
     end
 end
 
--- ── Main menu ─────────────────────────────────────────────────────
+-- ── Hoved-meny ────────────────────────────────────────────────────
 local function screenMain()
     while true do
         refreshBalance()
-        cls()
-        header("CASINO")
-        print("")
-        term.setTextColor(colors.lightGray)
-        print("  Innlogget: " .. session.username)
-        term.setTextColor(colors.yellow)
-        print("  Chips:     " .. session.chips .. " kr")
+        cls(); btns = {}
+        drawHeader("CASINO")
+
+        term.setCursorPos(1, 4)
+        term.setTextColor(colors.white)
+        term.write("  " .. session.username)
         if session.is_admin then
             term.setTextColor(colors.cyan)
-            print("  [ADMIN]")
+            term.write("  [ADMIN]")
         end
-        print("")
-        term.setTextColor(colors.gray)
-        print(string.rep("-", W))
-        term.setTextColor(colors.white)
-        print("")
-        msg("1. Spill")
-        msg("2. Logg ut")
-        print("")
-        term.setTextColor(colors.cyan)
-        io.write("Valg: ")
-        term.setTextColor(colors.white)
-        local c = read()
-        if c == "1" then
+
+        term.setCursorPos(1, 5)
+        term.setTextColor(colors.yellow)
+        term.write("  Chips: " .. session.chips .. " kr")
+
+        addBtn("games",  7,  "SPILL",    colors.green, colors.black)
+        addBtn("logout", 10, "LOGG UT",  colors.red,   colors.white)
+        drawBtns()
+
+        local ev, _, mx, my = os.pullEvent("mouse_click")
+        local bid = clickBtn(mx, my)
+        if bid == "games" then
             screenGames()
-        elseif c == "2" then
+        elseif bid == "logout" then
             session = {username=nil, chips=0, is_admin=false}
             return
         end
