@@ -1,6 +1,6 @@
 -- casino/admin.lua
--- Casino Kasse-terminal (Admin)
--- Krev: Tradlos modem
+-- Casino Cashier Terminal (Admin)
+-- Req: Wireless modem
 -- Start: casino_admin
 
 local PROTOCOL = "casino"
@@ -13,7 +13,7 @@ local adminPass = nil
 -- ── Modem ─────────────────────────────────────────────────────────
 local function openModem()
     local modem = peripheral.find("modem", function(_, m) return m.isWireless() end)
-    if not modem then error("Ingen tradlos modem!", 0) end
+    if not modem then error("No wireless modem found!", 0) end
     rednet.open(peripheral.getName(modem))
 end
 
@@ -28,12 +28,10 @@ end
 -- ── Buttons ───────────────────────────────────────────────────────
 local btns = {}
 
--- Knapp med eksplisitt posisjon, venstrejustert tekst
 local function rawAddBtn(id, x, y, w, text, bg, fg)
     btns[#btns+1] = {id=id, x=x, y=y, w=w, text=text, bg=bg, fg=fg, center=false}
 end
 
--- Full-bredde sentrert knapp
 local function addBtn(id, y, text, bg, fg)
     btns[#btns+1] = {id=id, x=3, y=y, w=W-4, text=text, bg=bg, fg=fg, center=true}
 end
@@ -104,21 +102,18 @@ end
 local function showMsg(text, clr)
     term.setCursorPos(1, H)
     if clr == colors.red then
-        term.setBackgroundColor(colors.red)
-        term.setTextColor(colors.white)
+        term.setBackgroundColor(colors.red); term.setTextColor(colors.white)
     elseif clr == colors.green then
-        term.setBackgroundColor(colors.black)
-        term.setTextColor(colors.green)
+        term.setBackgroundColor(colors.black); term.setTextColor(colors.green)
     else
-        term.setBackgroundColor(colors.black)
-        term.setTextColor(clr or colors.lightGray)
+        term.setBackgroundColor(colors.black); term.setTextColor(clr or colors.lightGray)
     end
     term.clearLine()
     term.write((" " .. text):sub(1, W))
     term.setBackgroundColor(colors.black)
 end
 
--- ── Hent brukerliste ──────────────────────────────────────────────
+-- ── Fetch user list ───────────────────────────────────────────────
 local function fetchUsers()
     local resp = request({
         type           = "list_users",
@@ -126,34 +121,30 @@ local function fetchUsers()
         admin_password = adminPass,
     })
     if not resp or not resp.ok then
-        return nil, (resp and resp.msg or "serverfeil")
+        return nil, (resp and resp.msg or "server error")
     end
     return resp.users
 end
 
--- ── Brukerpicker ──────────────────────────────────────────────────
+-- ── User picker ───────────────────────────────────────────────────
 local function pickUser()
     local users, err = fetchUsers()
     if not users then
         cls(); btns = {}
-        drawHeader("VELG BRUKER")
-        term.setCursorPos(1, 4)
-        term.setTextColor(colors.red)
-        term.write("  Feil: " .. err)
-        addBtn("back", H, "Tilbake", colors.gray, colors.white)
-        drawBtns()
-        os.pullEvent("mouse_click")
+        drawHeader("SELECT USER")
+        term.setCursorPos(1, 4); term.setTextColor(colors.red)
+        term.write("  Error: " .. err)
+        addBtn("back", H, "Back", colors.gray, colors.white)
+        drawBtns(); os.pullEvent("mouse_click")
         return nil
     end
     if #users == 0 then
         cls(); btns = {}
-        drawHeader("VELG BRUKER")
-        term.setCursorPos(1, 4)
-        term.setTextColor(colors.gray)
-        term.write("  Ingen brukere registrert.")
-        addBtn("back", H, "Tilbake", colors.gray, colors.white)
-        drawBtns()
-        os.pullEvent("mouse_click")
+        drawHeader("SELECT USER")
+        term.setCursorPos(1, 4); term.setTextColor(colors.gray)
+        term.write("  No users registered.")
+        addBtn("back", H, "Back", colors.gray, colors.white)
+        drawBtns(); os.pullEvent("mouse_click")
         return nil
     end
 
@@ -163,13 +154,13 @@ local function pickUser()
 
     while true do
         cls(); btns = {}
-        drawHeader("VELG BRUKER")
+        drawHeader("SELECT USER")
 
         local start = (page - 1) * PAGE + 1
         local y = 3
         for i = start, math.min(start + PAGE - 1, #users) do
-            local u    = users[i]
-            local right = u.chips .. " kr" .. (u.is_admin and " [A]" or "")
+            local u     = users[i]
+            local right = u.chips .. " chips" .. (u.is_admin and " [A]" or "")
             local maxL  = W - #right - 2
             local left  = " " .. u.username:sub(1, maxL)
             local pad   = W - #left - #right
@@ -182,13 +173,13 @@ local function pickUser()
         if pages > 1 then
             local hw = math.floor(W / 2) - 1
             if page > 1 then
-                rawAddBtn("prev", 1,      H - 1, hw,      "< Forrige", colors.lightGray, colors.black)
+                rawAddBtn("prev", 1,      H-1, hw,     "< Prev", colors.lightGray, colors.black)
             end
             if page < pages then
-                rawAddBtn("next", hw + 2, H - 1, W-hw-2,  "Neste >",   colors.lightGray, colors.black)
+                rawAddBtn("next", hw + 2, H-1, W-hw-2, "Next >", colors.lightGray, colors.black)
             end
         end
-        addBtn("back", H, "Avbryt", colors.red, colors.white)
+        addBtn("back", H, "Cancel", colors.red, colors.white)
         drawBtns()
 
         local _, _, mx, my = os.pullEvent("mouse_click")
@@ -201,27 +192,26 @@ local function pickUser()
     end
 end
 
--- ── Se alle brukere ───────────────────────────────────────────────
+-- ── View all users ────────────────────────────────────────────────
 local function screenListUsers()
     local users, err = fetchUsers()
-
     local PAGE  = H - 6
     local page  = 1
     local pages = users and math.max(1, math.ceil(#users / PAGE)) or 1
 
     while true do
         cls(); btns = {}
-        drawHeader("ALLE BRUKERE")
+        drawHeader("ALL USERS")
 
         if not users then
             term.setCursorPos(1, 4); term.setTextColor(colors.red)
-            term.write("  Feil: " .. err)
+            term.write("  Error: " .. err)
         elseif #users == 0 then
             term.setCursorPos(1, 4); term.setTextColor(colors.gray)
-            term.write("  Ingen brukere.")
+            term.write("  No users.")
         else
             term.setCursorPos(1, 3); term.setTextColor(colors.lightGray)
-            term.write(string.format(" %-13s %6s", "Navn", "Chips"))
+            term.write(string.format(" %-13s %6s", "Name", "Chips"))
             term.setCursorPos(1, 4); term.setTextColor(colors.gray)
             term.write(string.rep("-", W))
 
@@ -238,19 +228,19 @@ local function screenListUsers()
             end
 
             if pages > 1 then
-                term.setCursorPos(1, H - 2); term.setTextColor(colors.gray)
+                term.setCursorPos(1, H-2); term.setTextColor(colors.gray)
                 term.write(string.rep("-", W))
                 local hw = math.floor(W / 2) - 1
                 if page > 1 then
-                    rawAddBtn("prev", 1, H-1, hw, "< Forrige", colors.lightGray, colors.black)
+                    rawAddBtn("prev", 1, H-1, hw, "< Prev", colors.lightGray, colors.black)
                 end
                 if page < pages then
-                    rawAddBtn("next", hw+2, H-1, W-hw-2, "Neste >", colors.lightGray, colors.black)
+                    rawAddBtn("next", hw+2, H-1, W-hw-2, "Next >", colors.lightGray, colors.black)
                 end
             end
         end
 
-        addBtn("back", H, "Tilbake", colors.gray, colors.white)
+        addBtn("back", H, "Back", colors.gray, colors.white)
         drawBtns()
 
         local _, _, mx, my = os.pullEvent("mouse_click")
@@ -262,87 +252,87 @@ local function screenListUsers()
     end
 end
 
--- ── Legg til chips ────────────────────────────────────────────────
+-- ── Add chips ─────────────────────────────────────────────────────
 local function screenAddChips()
     local user = pickUser()
     if not user then return end
 
     cls(); btns = {}
-    drawHeader("LEGG TIL CHIPS")
+    drawHeader("ADD CHIPS")
 
     term.setCursorPos(1, 3); term.setTextColor(colors.lightGray)
-    term.write("  Bruker: "); term.setTextColor(colors.white); term.write(user.username)
+    term.write("  User:    "); term.setTextColor(colors.white); term.write(user.username)
     term.setCursorPos(1, 4); term.setTextColor(colors.lightGray)
-    term.write("  Saldo:  "); term.setTextColor(colors.yellow); term.write(user.chips .. " kr")
+    term.write("  Balance: "); term.setTextColor(colors.yellow); term.write(user.chips .. " chips")
 
-    local rawAmt = inputRow(6, "Legg til (kr):", false)
+    local rawAmt = inputRow(6, "Add amount:", false)
     local amount = tonumber(rawAmt)
     if not amount or amount <= 0 then
-        showMsg("Ugyldig belop!", colors.red); os.sleep(1.5); return
+        showMsg("Invalid amount!", colors.red); os.sleep(1.5); return
     end
 
     term.setCursorPos(1, 9); term.setTextColor(colors.white)
-    term.write("  + " .. amount .. " kr  →  " .. (user.chips + amount) .. " kr totalt")
+    term.write("  + " .. amount .. " chips  →  " .. (user.chips + amount) .. " chips total")
 
-    addBtn("ok",   11, "BEKREFT", colors.green, colors.black)
-    addBtn("back", 13, "Avbryt",  colors.red,   colors.white)
+    addBtn("ok",   11, "CONFIRM", colors.green, colors.black)
+    addBtn("back", 13, "Cancel",  colors.red,   colors.white)
     drawBtns()
 
     while true do
         local _, _, mx, my = os.pullEvent("mouse_click")
         local bid = clickBtn(mx, my)
         if bid == "ok" then
-            showMsg("Sender...", colors.lightGray)
+            showMsg("Sending...", colors.lightGray)
             local resp = request({
                 type="add_chips", admin=adminUser, admin_password=adminPass,
                 target=user.username, amount=amount,
             })
-            if not resp                 then showMsg("Serverfeil!", colors.red)
-            elseif not resp.ok          then showMsg(resp.msg or "Feil!", colors.red)
-            else showMsg(user.username .. " har na " .. resp.chips .. " kr", colors.green) end
+            if not resp                 then showMsg("Server error!", colors.red)
+            elseif not resp.ok          then showMsg(resp.msg or "Error!", colors.red)
+            else showMsg(user.username .. " now has " .. resp.chips .. " chips", colors.green) end
             os.sleep(1.5); return
         elseif bid == "back" then return end
     end
 end
 
--- ── Sett chips ────────────────────────────────────────────────────
+-- ── Set chips ─────────────────────────────────────────────────────
 local function screenSetChips()
     local user = pickUser()
     if not user then return end
 
     cls(); btns = {}
-    drawHeader("SETT CHIPS")
+    drawHeader("SET CHIPS")
 
     term.setCursorPos(1, 3); term.setTextColor(colors.lightGray)
-    term.write("  Bruker: "); term.setTextColor(colors.white); term.write(user.username)
+    term.write("  User:    "); term.setTextColor(colors.white); term.write(user.username)
     term.setCursorPos(1, 4); term.setTextColor(colors.lightGray)
-    term.write("  Saldo:  "); term.setTextColor(colors.yellow); term.write(user.chips .. " kr")
+    term.write("  Balance: "); term.setTextColor(colors.yellow); term.write(user.chips .. " chips")
 
-    local rawAmt = inputRow(6, "Sett chips til (kr):", false)
+    local rawAmt = inputRow(6, "Set chips to:", false)
     local amount = tonumber(rawAmt)
     if not amount or amount < 0 then
-        showMsg("Ugyldig belop!", colors.red); os.sleep(1.5); return
+        showMsg("Invalid amount!", colors.red); os.sleep(1.5); return
     end
 
     term.setCursorPos(1, 9); term.setTextColor(colors.white)
-    term.write("  " .. user.chips .. " kr  →  " .. amount .. " kr")
+    term.write("  " .. user.chips .. "  →  " .. amount .. " chips")
 
-    addBtn("ok",   11, "BEKREFT", colors.green, colors.black)
-    addBtn("back", 13, "Avbryt",  colors.red,   colors.white)
+    addBtn("ok",   11, "CONFIRM", colors.green, colors.black)
+    addBtn("back", 13, "Cancel",  colors.red,   colors.white)
     drawBtns()
 
     while true do
         local _, _, mx, my = os.pullEvent("mouse_click")
         local bid = clickBtn(mx, my)
         if bid == "ok" then
-            showMsg("Sender...", colors.lightGray)
+            showMsg("Sending...", colors.lightGray)
             local resp = request({
                 type="set_chips", admin=adminUser, admin_password=adminPass,
                 target=user.username, amount=amount,
             })
-            if not resp                 then showMsg("Serverfeil!", colors.red)
-            elseif not resp.ok          then showMsg(resp.msg or "Feil!", colors.red)
-            else showMsg(user.username .. " har na " .. resp.chips .. " kr", colors.green) end
+            if not resp                 then showMsg("Server error!", colors.red)
+            elseif not resp.ok          then showMsg(resp.msg or "Error!", colors.red)
+            else showMsg(user.username .. " now has " .. resp.chips .. " chips", colors.green) end
             os.sleep(1.5); return
         elseif bid == "back" then return end
     end
@@ -353,23 +343,23 @@ local function screenLogin()
     while true do
         cls(); btns = {}
         drawHeader("CASINO ADMIN")
-        local u = inputRow(3, "Brukernavn:", false)
-        local p = inputRow(6, "Passord:", true)
-        addBtn("ok",   9,  "LOGG INN", colors.yellow, colors.black)
-        addBtn("quit", 11, "Avslutt",  colors.gray,   colors.white)
+        local u = inputRow(3, "Username:", false)
+        local p = inputRow(6, "Password:", true)
+        addBtn("ok",   9,  "LOG IN", colors.yellow, colors.black)
+        addBtn("quit", 11, "Quit",   colors.gray,   colors.white)
         drawBtns()
 
         while true do
             local _, _, mx, my = os.pullEvent("mouse_click")
             local bid = clickBtn(mx, my)
             if bid == "ok" then
-                showMsg("Sjekker...", colors.lightGray)
+                showMsg("Checking...", colors.lightGray)
                 local resp = request({type="login", username=u, password=p})
-                if not resp              then showMsg("Finner ikke serveren!", colors.red)
-                elseif not resp.ok       then showMsg(resp.msg or "Feil passord!", colors.red)
-                elseif not resp.is_admin then showMsg("Ikke admin-tilgang!", colors.red)
+                if not resp              then showMsg("Server not found!", colors.red)
+                elseif not resp.ok       then showMsg(resp.msg or "Wrong password!", colors.red)
+                elseif not resp.is_admin then showMsg("No admin access!", colors.red)
                 else adminUser = u; adminPass = p; return end
-                break  -- re-draw login form
+                break
             elseif bid == "quit" then
                 cls(); os.shutdown()
             end
@@ -377,7 +367,7 @@ local function screenLogin()
     end
 end
 
--- ── Hoved-meny ────────────────────────────────────────────────────
+-- ── Main menu ─────────────────────────────────────────────────────
 local function screenMain()
     while true do
         cls(); btns = {}
@@ -387,10 +377,10 @@ local function screenMain()
         term.setTextColor(colors.lightGray)
         term.write("  " .. adminUser .. " [ADMIN]")
 
-        addBtn("list",   5, "Alle brukere",   colors.blue,   colors.white)
-        addBtn("add",    7, "Legg til chips", colors.green,  colors.black)
-        addBtn("set",    9, "Sett chips",     colors.yellow, colors.black)
-        addBtn("logout",12, "Logg ut",        colors.red,    colors.white)
+        addBtn("list",   5, "All users",   colors.blue,   colors.white)
+        addBtn("add",    7, "Add chips",   colors.green,  colors.black)
+        addBtn("set",    9, "Set chips",   colors.yellow, colors.black)
+        addBtn("logout",12, "Log out",     colors.red,    colors.white)
         drawBtns()
 
         local _, _, mx, my = os.pullEvent("mouse_click")

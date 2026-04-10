@@ -1,6 +1,6 @@
 -- poker/eval.lua
--- Texas Hold'em håndevaluering
--- Finner beste 5-kortshånd fra 7 kort (2 hull + 5 bordkort)
+-- Texas Hold'em hand evaluation
+-- Finds best 5-card hand from 7 cards (2 hole cards + 5 community cards)
 
 local M = {}
 
@@ -15,7 +15,7 @@ local NAMES = {
     "Straight Flush", "Royal Flush"
 }
 
--- Evaluer nøyaktig 5 kort -> (rang 1-10, tiebreaker-tabell)
+-- Evaluate exactly 5 cards -> (rank 1-10, tiebreaker table)
 local function score5(h)
     local v, s = {}, {}
     for _, c in ipairs(h) do
@@ -24,13 +24,13 @@ local function score5(h)
     end
     table.sort(v, function(a, b) return a > b end)
 
-    -- Flush-sjekk
+    -- Flush check
     local flush = true
     for i = 2, 5 do
         if s[i] ~= s[1] then flush = false; break end
     end
 
-    -- Straight-sjekk
+    -- Straight check
     local str8 = true
     for i = 2, 5 do
         if v[i] ~= v[i - 1] - 1 then str8 = false; break end
@@ -39,7 +39,7 @@ local function score5(h)
     local wheel = not str8 and v[1]==14 and v[2]==5 and v[3]==4 and v[4]==3 and v[5]==2
     if wheel then str8 = true end
 
-    -- Frekvenstelling
+    -- Frequency count
     local f = {}
     for _, x in ipairs(v) do f[x] = (f[x] or 0) + 1 end
     local g = {}
@@ -73,7 +73,7 @@ local function score5(h)
     end
 end
 
--- Sjekk om (r1,t1) er bedre enn (r2,t2)
+-- Check if (r1,t1) is better than (r2,t2)
 local function isBetter(r1, t1, r2, t2)
     if r1 ~= r2 then return r1 > r2 end
     for i = 1, math.max(#t1, #t2) do
@@ -83,13 +83,13 @@ local function isBetter(r1, t1, r2, t2)
     return false
 end
 
--- Finn beste 5-kortshånd fra liste med kort (7 for hold'em)
+-- Find best 5-card hand from list of cards (7 for hold'em)
 function M.best(allCards)
     local n = #allCards
-    if n < 5 then return 0, {}, "Ikke nok kort" end
+    if n < 5 then return 0, {}, "Not enough cards" end
 
     local br, bt = 0, {}
-    -- Iterer over alle kombinasjoner av 5 fra n
+    -- Iterate over all combinations of 5 from n
     for i = 1, n - 4 do
     for j = i+1, n - 3 do
     for k = j+1, n - 2 do
@@ -100,10 +100,10 @@ function M.best(allCards)
         if isBetter(r, t, br, bt) then br, bt = r, t end
     end end end end end
 
-    return br, bt, NAMES[br] or "Ukjent"
+    return br, bt, NAMES[br] or "Unknown"
 end
 
--- Sammenlign to hender: 1 = h1 vinner, -1 = h2 vinner, 0 = uavgjort
+-- Compare two hands: 1 = h1 wins, -1 = h2 wins, 0 = tie
 function M.compare(r1, t1, r2, t2)
     if r1 ~= r2 then return r1 > r2 and 1 or -1 end
     for i = 1, math.max(#t1, #t2) do

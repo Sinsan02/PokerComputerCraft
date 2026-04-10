@@ -1,7 +1,7 @@
 -- dealer.lua
--- Texas Hold'em Dealer med betting
--- Dealer trykker ENTER for å starte runde og starte ny runde etter showdown
--- Alt annet (flop/turn/river/showdown) skjer automatisk når alle har bettet
+-- Texas Hold'em Dealer with betting
+-- Dealer presses ENTER to start a round and to start a new round after showdown
+-- Everything else (flop/turn/river/showdown) happens automatically when all players have acted
 
 local dir   = fs.getDir(shell.getRunningProgram())
 local cards = dofile(fs.combine(dir, "cards.lua"))
@@ -13,11 +13,11 @@ local MAX_PLAYERS = 8
 local MIN_RAISE   = 10
 
 -- =====================================================
--- PERIFERI
+-- PERIPHERALS
 -- =====================================================
 local mon = peripheral.find("monitor")
 if not mon then
-    print("FEIL: Ingen monitor funnet!"); return
+    print("ERROR: No monitor found!"); return
 end
 mon.setTextScale(1)
 
@@ -29,21 +29,21 @@ for _, name in ipairs(peripheral.getNames()) do
         if p.isWireless and p.isWireless() then modemName = name; break end
     end
 end
-if not modemName then print("FEIL: Ingen trådløs modem funnet!"); return end
+if not modemName then print("ERROR: No wireless modem found!"); return end
 rednet.open(modemName)
 
 -- =====================================================
--- SPILLTILSTAND
+-- GAME STATE
 -- =====================================================
 local game = {
     phase       = "lobby",
     deck        = {},
     community   = {},
     players     = {},
-    -- Felt per spiller: {id, name, hand, balance, roundBet, totalBet, folded, allIn, acted}
+    -- Player fields: {id, name, hand, balance, roundBet, totalBet, folded, allIn, acted}
     pot         = 0,
     currentBet  = 0,
-    actionIdx   = 1,   -- indeks i game.players for hvem sin tur
+    actionIdx   = 1,   -- index in game.players for whose turn it is
     betting     = false,
     winner      = nil,
     winHand     = nil,
@@ -51,7 +51,7 @@ local game = {
 }
 
 -- =====================================================
--- NETTVERK
+-- NETWORK
 -- =====================================================
 local function sendTo(id, msg)
     rednet.send(id, textutils.serialize(msg), PROTOCOL)
@@ -96,7 +96,7 @@ local function broadcastState()
 end
 
 -- =====================================================
--- MONITOR-TEGNING
+-- MONITOR DRAWING
 -- =====================================================
 local function mfill(x1, y1, x2, y2, char, bg)
     mon.setBackgroundColor(bg or colors.green)
@@ -134,26 +134,26 @@ local function drawTable()
     local W, H = mon.getSize()
     mfill(1, 1, W, H, " ", colors.green)
 
-    -- Tittel
+    -- Title
     local title = "=== TEXAS HOLD'EM POKER ==="
     mon.setCursorPos(math.floor((W - #title) / 2) + 1, 1)
     mon.setBackgroundColor(colors.green)
     mon.setTextColor(colors.yellow)
     mon.write(title)
 
-    -- Fase
+    -- Phase
     local phaseNames = {
-        lobby="LOBBY", deal="KORT DELT UT",
+        lobby="LOBBY", deal="CARDS DEALT",
         flop="FLOP", turn="TURN", river="RIVER", showdown="SHOWDOWN"
     }
     local phStr = "[ " .. (phaseNames[game.phase] or game.phase:upper()) .. " ]"
     if game.betting then
-        phStr = phStr .. "  Tur: " .. (currentPlayerName() or "")
+        phStr = phStr .. "  Turn: " .. (currentPlayerName() or "")
     end
     mon.setCursorPos(math.floor((W - #phStr) / 2) + 1, 2)
     mon.setTextColor(colors.white); mon.write(phStr)
 
-    -- Bordkort
+    -- Community cards
     local cardW = 5; local cardH = 5; local spacing = 1
     local totalW = 5 * cardW + 4 * spacing
     local startX = math.floor((W - totalW) / 2) + 1
@@ -162,21 +162,21 @@ local function drawTable()
         drawMonCard(startX + (i-1)*(cardW+spacing), startY, game.community[i])
     end
 
-    -- Pott og current bet
-    local potStr = "Pott: $" .. game.pot
+    -- Pot and current bet
+    local potStr = "Pot: $" .. game.pot
     if game.currentBet > 0 then
-        potStr = potStr .. "  |  Gjeldende bet: $" .. game.currentBet
+        potStr = potStr .. "  |  Current bet: $" .. game.currentBet
     end
     mon.setCursorPos(2, startY + cardH + 1)
     mon.setBackgroundColor(colors.green)
     mon.setTextColor(colors.yellow)
     mon.write(potStr)
 
-    -- Spillerliste med balanse og bet
+    -- Player list with balance and bet
     local listY = startY + cardH + 2
     mon.setCursorPos(2, listY)
     mon.setTextColor(colors.lightGray)
-    mon.write("Spillere:")
+    mon.write("Players:")
 
     for i, p in ipairs(game.players) do
         if listY + i > H - 2 then break end
@@ -215,9 +215,9 @@ local function drawTable()
         if pad > 0 then mon.write(string.rep(" ", pad)) end
     end
 
-    -- Vinner-banner
+    -- Winner banner
     if game.winner then
-        local wStr = " VINNER: " .. game.winner .. " - " .. (game.winHand or "") .. " "
+        local wStr = " WINNER: " .. game.winner .. " - " .. (game.winHand or "") .. " "
         if #wStr > W then wStr = wStr:sub(1, W) end
         local wx = math.floor((W - #wStr) / 2) + 1
         mon.setCursorPos(wx, H - 1)
@@ -242,45 +242,45 @@ local function drawTerminal()
     term.setTextColor(colors.yellow)
     print("=== POKER DEALER ===")
     term.setTextColor(colors.white)
-    print("Fase: " .. game.phase:upper() .. "  |  ID: " .. os.getComputerID())
+    print("Phase: " .. game.phase:upper() .. "  |  ID: " .. os.getComputerID())
     print(string.rep("-", 40))
-    print(string.format("%-14s %-7s %-7s %s", "Navn", "Balanse", "Bet", "Status"))
+    print(string.format("%-14s %-7s %-7s %s", "Name", "Balance", "Bet", "Status"))
     print(string.rep("-", 40))
     for i, p in ipairs(game.players) do
         local status = ""
         if p.folded  then status = "FOLD"
         elseif p.allIn then status = "ALL-IN"
-        elseif game.betting and i == game.actionIdx then status = "<-- TUR"
+        elseif game.betting and i == game.actionIdx then status = "<-- TURN"
         end
         term.setTextColor(game.betting and i == game.actionIdx and colors.cyan or colors.lightGray)
         print(string.format("%-14s $%-6d $%-6d %s", p.name, p.balance, p.roundBet, status))
     end
     term.setTextColor(colors.white)
     print(string.rep("-", 40))
-    print("Pott: $" .. game.pot .. "  |  Bet: $" .. game.currentBet)
+    print("Pot: $" .. game.pot .. "  |  Bet: $" .. game.currentBet)
     print(string.rep("-", 40))
 
     if game.phase == "lobby" then
         if #game.players < MIN_PLAYERS then
             term.setTextColor(colors.red)
-            print("Venter pa minst " .. MIN_PLAYERS .. " spillere (" .. #game.players .. " nå)")
+            print("Waiting for at least " .. MIN_PLAYERS .. " players (" .. #game.players .. " now)")
         else
             term.setTextColor(colors.green)
-            print("[ENTER] Start spill (" .. #game.players .. " spillere)")
+            print("[ENTER] Start game (" .. #game.players .. " players)")
         end
     elseif game.betting then
         term.setTextColor(colors.cyan)
-        print("Venter pa: " .. (currentPlayerName() or "?"))
+        print("Waiting for: " .. (currentPlayerName() or "?"))
     elseif game.phase == "showdown" then
         term.setTextColor(colors.yellow)
-        if game.winner then print("VINNER: " .. game.winner) end
+        if game.winner then print("WINNER: " .. game.winner) end
         term.setTextColor(colors.green)
-        print("[ENTER] Ny runde")
+        print("[ENTER] New round")
     end
 end
 
 -- =====================================================
--- BETTING-LOGIKK
+-- BETTING LOGIC
 -- =====================================================
 local function countActive()
     local n, last = 0, nil
@@ -342,7 +342,7 @@ local function startBettingRound()
             p.acted    = false
         end
     end
-    -- Finn første ikke-foldede
+    -- Find first non-folded player
     while game.players[game.actionIdx] and game.players[game.actionIdx].folded do
         game.actionIdx = game.actionIdx + 1
         if game.actionIdx > #game.players then game.actionIdx = 1; break end
@@ -372,7 +372,7 @@ local function doShowdown()
         end
     end
 
-    -- Fordel pott
+    -- Distribute pot
     local share = math.floor(game.pot / math.max(1, #winners))
     local winNames = {}
     for _, w in ipairs(winners) do
@@ -380,7 +380,7 @@ local function doShowdown()
         winNames[#winNames+1] = w.name
     end
 
-    game.winner  = table.concat(winNames, " & ") .. (#winners > 1 and " (Delt)" or "")
+    game.winner  = table.concat(winNames, " & ") .. (#winners > 1 and " (Split)" or "")
     game.winHand = game.results[1] and game.results[1].handName or ""
     for _, r in ipairs(game.results) do
         for _, w in ipairs(winners) do
@@ -402,7 +402,7 @@ end
 local function autoWin(winner)
     winner.balance = winner.balance + game.pot
     game.winner    = winner.name
-    game.winHand   = "Alle andre foldet"
+    game.winHand   = "All others folded"
     game.betting   = false
     game.phase     = "showdown"
     game.results   = {}
@@ -411,22 +411,22 @@ local function autoWin(winner)
         community  = game.community,
         results    = {},
         winners    = {winner.name},
-        winHand    = "Alle andre foldet",
+        winHand    = "All others folded",
         playerData = playerDataList(),
         pot        = game.pot,
     })
 end
 
 local function checkAutoAdvance()
-    -- Sjekk om kun en spiller gjenstår
+    -- Check if only one player remains
     local n, last = countActive()
     if n == 1 then autoWin(last); return end
-    -- Sjekk om betting-runde er ferdig
+    -- Check if betting round is done
     if not isBettingDone() then return end
     game.betting = false
     if     game.phase == "deal"  then
-        -- Vis flop
-        cards.deal(game.deck)  -- brent
+        -- Show flop
+        cards.deal(game.deck)  -- burn
         for _ = 1,3 do game.community[#game.community+1] = cards.deal(game.deck) end
         game.phase = "flop"
         broadcastState()
@@ -449,12 +449,12 @@ local function checkAutoAdvance()
 end
 
 -- =====================================================
--- HÅNDTER BETTING-HANDLING FRA SPILLER
+-- HANDLE BETTING ACTION FROM PLAYER
 -- =====================================================
 local function handleAction(senderID, msg)
     if not game.betting then return end
     local p = game.players[game.actionIdx]
-    if not p or p.id ~= senderID then return end  -- ikke deres tur
+    if not p or p.id ~= senderID then return end  -- not their turn
 
     local action = msg.action
 
@@ -463,7 +463,7 @@ local function handleAction(senderID, msg)
         p.acted  = true
 
     elseif action == "check" then
-        if p.roundBet < game.currentBet then return end  -- ugyldig
+        if p.roundBet < game.currentBet then return end  -- invalid
         p.acted = true
 
     elseif action == "call" then
@@ -485,7 +485,7 @@ local function handleAction(senderID, msg)
         game.pot   = game.pot   + total
         game.currentBet = p.roundBet
         if p.balance == 0 then p.allIn = true end
-        -- Reset andres acted
+        -- Reset others' acted flag
         for i2, p2 in ipairs(game.players) do
             if p2 ~= p and not p2.folded and not p2.allIn then
                 p2.acted = false
@@ -511,7 +511,7 @@ local function handleAction(senderID, msg)
         p.acted = true
     end
 
-    -- Neste spiller eller avslutt runde
+    -- Next player or end round
     if not isBettingDone() then
         nextActionIdx()
         notifyTurn()
@@ -521,7 +521,7 @@ local function handleAction(senderID, msg)
 end
 
 -- =====================================================
--- START SPILL OG RESET
+-- START GAME AND RESET
 -- =====================================================
 local function startGame()
     game.deck      = cards.newDeck()
@@ -568,16 +568,16 @@ local function resetLobby()
 end
 
 -- =====================================================
--- HÅNDTER SPILLER-MELDINGER
+-- HANDLE PLAYER MESSAGES
 -- =====================================================
 local function handlePlayerMsg(senderID, msg)
     if msg.type == "join" then
         if game.phase ~= "lobby" then
-            sendTo(senderID, {type="error", msg="Spillet er i gang."})
+            sendTo(senderID, {type="error", msg="Game is in progress."})
             return
         end
         if #game.players >= MAX_PLAYERS then
-            sendTo(senderID, {type="error", msg="Fullt bord."}); return
+            sendTo(senderID, {type="error", msg="Table is full."}); return
         end
         for _, p in ipairs(game.players) do
             if p.id == senderID then
@@ -586,8 +586,8 @@ local function handlePlayerMsg(senderID, msg)
                 return
             end
         end
-        local name = (msg.name or "Spiller"):sub(1,14):match("^%s*(.-)%s*$")
-        if name == "" then name = "Spiller" .. (#game.players+1) end
+        local name = (msg.name or "Player"):sub(1,14):match("^%s*(.-)%s*$")
+        if name == "" then name = "Player" .. (#game.players+1) end
         local balance = math.max(100, math.min(10000, tonumber(msg.balance) or 1000))
         game.players[#game.players+1] = {
             id=senderID, name=name, hand={},
@@ -609,7 +609,7 @@ local function handlePlayerMsg(senderID, msg)
                 if game.betting and i == game.actionIdx then
                     wasCurrentPlayer = true
                 end
-                -- Juster actionIdx om nødvendig
+                -- Adjust actionIdx if needed
                 if i < game.actionIdx then
                     game.actionIdx = game.actionIdx - 1
                 end
@@ -617,17 +617,17 @@ local function handlePlayerMsg(senderID, msg)
                 break
             end
         end
-        -- Om det var deres tur, gå videre
+        -- If it was their turn, advance
         if wasCurrentPlayer and game.betting and #game.players > 0 then
             if game.actionIdx > #game.players then game.actionIdx = 1 end
-            -- Sjekk om spillet kan fortsette
+            -- Check if the game can continue
             local n, last = countActive()
             if n <= 1 then
                 if last then autoWin(last) end
             elseif isBettingDone() then
                 checkAutoAdvance()
             else
-                -- Finn neste ikke-foldede spiller
+                -- Find next non-folded player
                 local found = false
                 for _ = 1, #game.players do
                     local p = game.players[game.actionIdx]
@@ -659,7 +659,7 @@ local function handlePlayerMsg(senderID, msg)
 end
 
 -- =====================================================
--- HOVEDLØKKE
+-- MAIN LOOP
 -- =====================================================
 drawTable()
 drawTerminal()

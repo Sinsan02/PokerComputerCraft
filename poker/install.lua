@@ -1,7 +1,7 @@
 -- install.lua
--- Automatisk installasjon av Texas Hold'em Poker for ComputerCraft
--- Last ned: wget https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/poker/install.lua
--- Kjor:     install
+-- Automatic installation of Texas Hold'em Poker for ComputerCraft
+-- Download: wget https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/poker/install.lua
+-- Run:      install
 
 local BASE = "https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/poker/"
 
@@ -23,9 +23,9 @@ local function line(char, clr)
     term.setTextColor(clr or colors.gray)
     print(string.rep(char or "-", W))
 end
-local function ok(msg)   term.setTextColor(colors.green);     print("  [OK]   " .. msg) end
-local function fail(msg) term.setTextColor(colors.red);       print("  [FEIL] " .. msg) end
-local function info(msg) term.setTextColor(colors.white);     print(msg) end
+local function ok(msg)   term.setTextColor(colors.green); print("  [OK]   " .. msg) end
+local function fail(msg) term.setTextColor(colors.red);   print("  [FAIL] " .. msg) end
+local function info(msg) term.setTextColor(colors.white); print(msg) end
 
 -- =====================================================
 term.setBackgroundColor(colors.black)
@@ -38,17 +38,17 @@ print("Texas Hold'em for ComputerCraft")
 line("=", colors.yellow)
 print("")
 
--- Lag poker/-mappe
+-- Create poker/ folder
 if not fs.exists("poker") then
     fs.makeDir("poker")
-    ok("Opprettet mappe: poker/")
+    ok("Created folder: poker/")
 else
-    info("  Mappe poker/ finnes allerede.")
+    info("  Folder poker/ already exists.")
 end
 print("")
 
--- Last ned filer med wget (samme som fungerte for install.lua)
-info("Laster ned filer...")
+-- Download files
+info("Downloading files...")
 line()
 
 local allOk = true
@@ -56,48 +56,47 @@ for _, f in ipairs(FILES) do
     term.setTextColor(colors.lightGray)
     print("  " .. f.dst .. " ...")
 
-    -- Slett gammel fil for ren nedlasting
     if fs.exists(f.dst) then fs.delete(f.dst) end
 
     local url = BASE .. f.src
     local success = shell.run("wget", url, f.dst)
 
     if success and fs.exists(f.dst) then
-        ok("Lastet ned: " .. f.dst)
+        ok("Downloaded: " .. f.dst)
     else
-        fail("Feilet: " .. f.dst)
+        fail("Failed: " .. f.dst)
         allOk = false
     end
 end
 
--- Lag snarveier
+-- Create shortcuts
 print("")
-info("Oppretter snarveier...")
+info("Creating shortcuts...")
 line()
 for _, s in ipairs(SHORTCUTS) do
     local file = fs.open(s.dst, "w")
     file.write(s.content)
     file.close()
-    ok("Snarvei: '" .. s.dst .. "'")
+    ok("Shortcut: '" .. s.dst .. "'")
 end
 
--- Resultat
+-- Result
 print("")
 line("=", colors.yellow)
 if allOk then
     term.setTextColor(colors.yellow)
-    print("  INSTALLASJON FULLFORT!")
+    print("  INSTALLATION COMPLETE!")
     print("")
     term.setTextColor(colors.white)
-    print("  Start med:")
+    print("  Start with:")
     term.setTextColor(colors.cyan)
-    print("    dealer   <- bordPC (trenger monitor + modem)")
-    print("    player   <- spiller (lommePC)")
+    print("    dealer   <- table PC (needs monitor + modem)")
+    print("    player   <- player (pocket PC)")
 else
     term.setTextColor(colors.red)
-    print("  NOEN FILER FEILET!")
+    print("  SOME FILES FAILED!")
     term.setTextColor(colors.white)
-    print("  Sjekk at filene er pushet til GitHub.")
+    print("  Check that files are pushed to GitHub.")
 end
 line("=", colors.yellow)
 term.setTextColor(colors.white)

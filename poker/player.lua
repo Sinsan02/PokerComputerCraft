@@ -1,6 +1,6 @@
 -- player.lua
--- Texas Hold'em Spiller (lomme-PC)
--- Taster: C=Check/Call  R=Raise  F=Fold  A=All-in  Q=Avslutt
+-- Texas Hold'em Player (pocket PC)
+-- Keys: C=Check/Call  R=Raise  F=Fold  A=All-in  Q=Quit
 
 local dir   = fs.getDir(shell.getRunningProgram())
 local cards = dofile(fs.combine(dir, "cards.lua"))
@@ -8,7 +8,7 @@ local cards = dofile(fs.combine(dir, "cards.lua"))
 local PROTOCOL = "txpoker"
 
 -- =====================================================
--- TRÅDLØS MODEM
+-- WIRELESS MODEM
 -- =====================================================
 local modemSide
 for _, side in ipairs({"back","left","right","top","bottom","front"}) do
@@ -23,12 +23,12 @@ if not modemSide then
     if found then modemSide = peripheral.getName(found) end
 end
 if not modemSide then
-    print("FEIL: Ingen trådløs modem!"); return
+    print("ERROR: No wireless modem!"); return
 end
 rednet.open(modemSide)
 
 -- =====================================================
--- CASINO-SESJON
+-- CASINO SESSION
 -- =====================================================
 local CASINO_PROTOCOL = "casino"
 local SESSION_FILE    = "/casino_session"
@@ -53,11 +53,11 @@ local function syncCasinoOnExit(finalChips)
 end
 
 -- =====================================================
--- OPPSTART - NAVN OG BALANSE
+-- STARTUP - NAME AND BALANCE
 -- =====================================================
 local playerName, startBal
 
--- Les casino-sesjon hvis startet fra casino-appen
+-- Read casino session if started from the casino app
 if fs.exists(SESSION_FILE) then
     local f = fs.open(SESSION_FILE, "r")
     local sess = textutils.unserialize(f.readAll())
@@ -66,14 +66,14 @@ if fs.exists(SESSION_FILE) then
     if type(sess) == "table" and sess.username then
         casinoUser = sess.username
         playerName = sess.username
-        -- Synk balanse mot casino-server
+        -- Sync balance with casino server
         local resp = casinoRequest({type="get_balance", username=casinoUser})
         startBal = (resp and resp.ok and resp.chips) or sess.chips or 1000
         casinoStart = startBal
     end
 end
 
--- Fallback: spor uten casino-konto
+-- Fallback: play without a casino account
 if not playerName then
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.yellow)
@@ -81,22 +81,22 @@ if not playerName then
     print("=== TEXAS HOLD'EM ===")
     term.setTextColor(colors.white)
     print("")
-    print("Navn:")
+    print("Name:")
     term.setTextColor(colors.cyan)
     playerName = read()
     if not playerName or playerName:match("^%s*$") then
-        playerName = "Spiller" .. os.getComputerID()
+        playerName = "Player" .. os.getComputerID()
     end
     playerName = playerName:sub(1,14):match("^%s*(.-)%s*$") or playerName
     term.setTextColor(colors.white)
-    print("Start-balanse (100-10000):")
+    print("Starting balance (100-10000):")
     term.setTextColor(colors.cyan)
     local balInput = tonumber(read()) or 1000
     startBal = math.max(100, math.min(10000, balInput))
 end
 
 -- =====================================================
--- TILSTAND
+-- STATE
 -- =====================================================
 local st = {
     joined      = false,
@@ -120,13 +120,13 @@ local st = {
     playerData  = {},
     currentPlayer = nil,
     betting     = false,
-    msg         = "Kobler til...",
+    msg         = "Connecting...",
 }
 
 local W, H = term.getSize()
 
 -- =====================================================
--- TEGNING
+-- DRAWING
 -- =====================================================
 local function writeCard(c)
     term.setBackgroundColor(colors.white)
@@ -151,7 +151,7 @@ local function drawScreen()
     term.setBackgroundColor(colors.black)
     term.clear()
 
-    -- Rad 1: Header
+    -- Row 1: Header
     term.setCursorPos(1, 1)
     term.setBackgroundColor(colors.green)
     term.setTextColor(colors.yellow)
@@ -159,59 +159,59 @@ local function drawScreen()
     term.write(string.format("%-" .. W .. "s", hdr):sub(1, W))
     term.setBackgroundColor(colors.black)
 
-    -- Rad 2: Fase og tur
+    -- Row 2: Phase and turn
     term.setCursorPos(1, 2)
     if st.myTurn then
         term.setTextColor(colors.yellow)
-        term.write("*** DIN TUR ***")
+        term.write("*** YOUR TURN ***")
     else
         term.setTextColor(colors.lightGray)
-        local info = "Fase: " .. st.phase:upper()
+        local info = "Phase: " .. st.phase:upper()
         if st.betting and st.currentPlayer and not st.myTurn then
-            info = info .. " | Tur: " .. st.currentPlayer
+            info = info .. " | Turn: " .. st.currentPlayer
         end
         term.write(info:sub(1, W))
     end
 
     hline(3)
 
-    -- Rad 4-5: Din hånd
+    -- Row 4-5: Your hand
     term.setCursorPos(1, 4)
     term.setTextColor(colors.white)
-    term.write("DIN HAND:")
+    term.write("YOUR HAND:")
     term.setCursorPos(1, 5)
     if #st.hand == 0 then
-        term.setTextColor(colors.gray); term.write("Venter på kort...")
+        term.setTextColor(colors.gray); term.write("Waiting for cards...")
     else
         for _, c in ipairs(st.hand) do writeCard(c) end
     end
 
     hline(6)
 
-    -- Rad 7-8: Bordkort
+    -- Row 7-8: Community cards
     term.setCursorPos(1, 7)
     term.setTextColor(colors.white)
-    term.write("BORD:")
+    term.write("BOARD:")
     term.setCursorPos(1, 8)
     if #st.community == 0 then
-        term.setTextColor(colors.gray); term.write("Ikke delt ennå")
+        term.setTextColor(colors.gray); term.write("Not dealt yet")
     else
         for _, c in ipairs(st.community) do writeCard(c) end
     end
 
     hline(9)
 
-    -- Rad 10-11: Pott og balanse
+    -- Row 10-11: Pot and balance
     term.setCursorPos(1, 10)
     term.setTextColor(colors.yellow)
-    term.write(string.format("Pott: $%-5d  Bet: $%d", st.pot, st.currentBet):sub(1,W))
+    term.write(string.format("Pot: $%-5d  Bet: $%d", st.pot, st.currentBet):sub(1,W))
     term.setCursorPos(1, 11)
     term.setTextColor(colors.white)
-    term.write(string.format("Balanse: $%-5d  Din bet: $%d", st.myBalance, st.myRoundBet):sub(1,W))
+    term.write(string.format("Balance: $%-5d  Your bet: $%d", st.myBalance, st.myRoundBet):sub(1,W))
 
     hline(12)
 
-    -- Rad 13+: Handlinger eller venter
+    -- Row 13+: Actions or waiting
     if st.myTurn then
         term.setCursorPos(1, 13)
         term.setTextColor(colors.cyan)
@@ -222,16 +222,16 @@ local function drawScreen()
         end
         term.setCursorPos(1, 14)
         term.setTextColor(colors.lightGray)
-        term.write("[A]ll-in ($" .. st.myBalance .. ")")
+        term.write("[A]ll-in  ($" .. st.myBalance .. ")")
     elseif st.phase == "showdown" and st.winner then
         hline(13, colors.yellow)
         term.setCursorPos(1, 14)
         if st.winner == st.name or st.winner:find(st.name) then
             term.setTextColor(colors.yellow)
-            term.write("DU VANT! " .. (st.winHand or ""))
+            term.write("YOU WON! " .. (st.winHand or ""))
         else
             term.setTextColor(colors.white)
-            term.write(("Vinner: " .. st.winner):sub(1,W))
+            term.write(("Winner: " .. st.winner):sub(1,W))
             term.setCursorPos(1, 15)
             term.setTextColor(colors.lightGray)
             term.write((st.winHand or ""):sub(1,W))
@@ -239,11 +239,11 @@ local function drawScreen()
     elseif st.phase == "lobby" then
         term.setCursorPos(1, 13)
         term.setTextColor(colors.gray)
-        term.write("Venter på at dealer starter...")
+        term.write("Waiting for dealer to start...")
     else
         term.setCursorPos(1, 13)
         term.setTextColor(colors.gray)
-        local wt = st.currentPlayer and ("Venter på: " .. st.currentPlayer) or "Venter..."
+        local wt = st.currentPlayer and ("Waiting for: " .. st.currentPlayer) or "Waiting..."
         term.write(wt:sub(1,W))
     end
 
@@ -276,7 +276,7 @@ local function drawScreen()
         return
     end
 
-    -- Statuslinje nederst
+    -- Status line at bottom
     term.setCursorPos(1, H)
     term.setTextColor(colors.gray)
     term.setBackgroundColor(colors.black)
@@ -284,7 +284,7 @@ local function drawScreen()
 end
 
 -- =====================================================
--- SENDE HANDLINGER
+-- SENDING ACTIONS
 -- =====================================================
 local function sendAction(action, amount)
     if not st.dealerID then return end
@@ -294,7 +294,7 @@ local function sendAction(action, amount)
 end
 
 -- =====================================================
--- MELDINGSHÅNDTERING
+-- MESSAGE HANDLING
 -- =====================================================
 local function handleMsg(senderID, msg)
     local fromDealer = (st.dealerID == nil) or (senderID == st.dealerID)
@@ -305,17 +305,17 @@ local function handleMsg(senderID, msg)
         st.name      = msg.name or playerName
         st.myBalance = msg.balance or startBal
         st.phase     = "lobby"
-        st.msg       = "Ble med! Venter på start..."
+        st.msg       = "Joined! Waiting for start..."
 
     elseif not fromDealer then return
 
     elseif msg.type == "error" then
-        st.msg = "FEIL: " .. (msg.msg or "")
+        st.msg = "ERROR: " .. (msg.msg or "")
 
     elseif msg.type == "hand" then
         st.hand  = msg.cards or {}
         st.phase = msg.phase or st.phase
-        st.msg   = "Kort mottatt! Sjekk hånden din."
+        st.msg   = "Cards received! Check your hand."
 
     elseif msg.type == "state" then
         st.phase         = msg.phase or st.phase
@@ -326,9 +326,9 @@ local function handleMsg(senderID, msg)
         st.betting       = msg.betting or false
         st.playerData    = msg.playerData or {}
         st.winner        = nil
-        -- myTurn styres direkte av currentPlayer-feltet i state
+        -- myTurn is controlled directly by the currentPlayer field in state
         st.myTurn = (msg.betting and msg.currentPlayer == st.name)
-        -- Oppdater min balanse og bet fra playerData
+        -- Update my balance and bet from playerData
         for _, pd in ipairs(st.playerData) do
             if pd.name == st.name then
                 st.myBalance  = pd.balance
@@ -336,13 +336,13 @@ local function handleMsg(senderID, msg)
                 break
             end
         end
-        -- Hvis det er vår tur, sett bet-info fra state
+        -- If it's our turn, set bet info from state
         if st.myTurn then
             st.canCheck   = (st.myRoundBet >= st.currentBet)
             st.callAmount = math.max(0, st.currentBet - st.myRoundBet)
-            st.msg        = "DIN TUR! Velg handling."
+            st.msg        = "YOUR TURN! Choose action."
         else
-            local phMsgs = {deal="Kort er delt ut!", flop="Flop!", turn="Turn!", river="River - siste kort!"}
+            local phMsgs = {deal="Cards dealt!", flop="Flop!", turn="Turn!", river="River - last card!"}
             st.msg = phMsgs[st.phase] or ""
         end
 
@@ -355,7 +355,7 @@ local function handleMsg(senderID, msg)
         st.myBalance   = msg.balance or st.myBalance
         st.pot         = msg.pot or st.pot
         st.minRaise    = msg.minRaise or 10
-        st.msg         = "DIN TUR! Velg handling."
+        st.msg         = "YOUR TURN! Choose action."
 
     elseif msg.type == "showdown" then
         st.phase      = "showdown"
@@ -370,7 +370,7 @@ local function handleMsg(senderID, msg)
             for _, w in ipairs(msg.winners) do
                 if w == st.name then iWon = true; break end
             end
-            st.msg = iWon and "Du vant!" or ("Vinner: " .. st.winner)
+            st.msg = iWon and "You won!" or ("Winner: " .. st.winner)
         end
         for _, pd in ipairs(st.playerData) do
             if pd.name == st.name then
@@ -394,7 +394,7 @@ local function handleMsg(senderID, msg)
         for _, pd in ipairs(st.playerData) do
             if pd.name == st.name then st.myBalance = pd.balance; break end
         end
-        st.msg = "Ny runde. Venter på dealer..."
+        st.msg = "New round. Waiting for dealer..."
         rednet.broadcast(textutils.serialize({
             type="join", name=playerName, balance=st.myBalance
         }), PROTOCOL)
@@ -402,16 +402,16 @@ local function handleMsg(senderID, msg)
 end
 
 -- =====================================================
--- KOBLE TIL
+-- CONNECT
 -- =====================================================
-st.msg = "Sender forespørsel..."
+st.msg = "Sending request..."
 drawScreen()
 rednet.broadcast(textutils.serialize({
     type="join", name=playerName, balance=startBal
 }), PROTOCOL)
 
 -- =====================================================
--- HOVED-LØKKE
+-- MAIN LOOP
 -- =====================================================
 local joinTimer = os.startTimer(3)
 local retries   = 0
@@ -433,9 +433,9 @@ while true do
             if amt and amt >= st.minRaise then
                 sendAction("raise", amt)
                 st.myTurn = false
-                st.msg    = "Du raised $" .. amt
+                st.msg    = "You raised $" .. amt
             else
-                st.msg = "Ugyldig (min $" .. st.minRaise .. ")"
+                st.msg = "Invalid (min $" .. st.minRaise .. ")"
             end
             drawScreen()
         elseif a == keys.backspace then
@@ -444,7 +444,7 @@ while true do
         elseif a == keys.q or a == keys.escape then
             st.raising     = false
             st.raiseBuffer = ""
-            st.msg         = "Raise avbrutt"
+            st.msg         = "Raise cancelled"
             drawScreen()
         end
 
@@ -461,7 +461,7 @@ while true do
     elseif event == "timer" and a == joinTimer then
         if not st.joined then
             retries = retries + 1
-            st.msg  = "Prøver igjen... (" .. retries .. ")"
+            st.msg  = "Retrying... (" .. retries .. ")"
             rednet.broadcast(textutils.serialize({
                 type="join", name=playerName, balance=startBal
             }), PROTOCOL)
@@ -480,7 +480,7 @@ while true do
             term.setBackgroundColor(colors.black)
             term.setTextColor(colors.white)
             term.clear(); term.setCursorPos(1,1)
-            print("Ha det!"); return
+            print("Goodbye!"); return
 
         elseif st.myTurn then
             if k == keys.c then
@@ -491,13 +491,13 @@ while true do
                     sendAction("call")
                 end
                 st.myTurn = false
-                st.msg    = st.canCheck and "Du sjekket." or ("Du calte $" .. st.callAmount)
+                st.msg    = st.canCheck and "You checked." or ("You called $" .. st.callAmount)
                 drawScreen()
 
             elseif k == keys.f then
                 sendAction("fold")
                 st.myTurn = false
-                st.msg    = "Du foldet."
+                st.msg    = "You folded."
                 drawScreen()
 
             elseif k == keys.a then

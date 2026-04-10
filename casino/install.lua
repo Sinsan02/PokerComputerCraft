@@ -1,7 +1,7 @@
 -- casino/install.lua
--- Installerer Casino-systemet for ComputerCraft
--- Last ned: wget https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/casino/install.lua
--- Kjor:     install
+-- Installs the Casino system for ComputerCraft
+-- Download: wget https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/casino/install.lua
+-- Run:      install
 
 local CASINO_BASE = "https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/casino/"
 local POKER_BASE  = "https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/poker/"
@@ -12,9 +12,9 @@ local function line(char, clr)
     term.setTextColor(clr or colors.gray)
     print(string.rep(char or "-", W))
 end
-local function ok(m)   term.setTextColor(colors.green);     print("  [OK]   " .. m) end
-local function fail(m) term.setTextColor(colors.red);       print("  [FEIL] " .. m) end
-local function info(m) term.setTextColor(colors.white);     print(m) end
+local function ok(m)   term.setTextColor(colors.green); print("  [OK]   " .. m) end
+local function fail(m) term.setTextColor(colors.red);   print("  [FAIL] " .. m) end
+local function info(m) term.setTextColor(colors.white); print(m) end
 
 term.setBackgroundColor(colors.black)
 term.clear()
@@ -25,17 +25,17 @@ term.setTextColor(colors.lightGray)
 print("ComputerCraft Casino System")
 line("=", colors.yellow)
 print("")
-info("Hva vil du installere?")
+info("What do you want to install?")
 print("")
 term.setTextColor(colors.white)
-print("  1. Klient      (lomme-PC / spiller)")
-print("  2. Admin       (kasse-terminal)")
-print("  3. DB Server   (database-server)")
-print("  4. Poker       (dealer-bord + spiller)")
-print("  5. Alt")
+print("  1. Client     (pocket PC / player)")
+print("  2. Admin      (cashier terminal)")
+print("  3. DB Server  (database server)")
+print("  4. Poker      (dealer table + player)")
+print("  5. All")
 print("")
 term.setTextColor(colors.cyan)
-io.write("Valg [1-5]: ")
+io.write("Choice [1-5]: ")
 term.setTextColor(colors.white)
 local choice = read()
 print("")
@@ -50,7 +50,7 @@ end
 local function installFiles(files, baseUrl, folder)
     if folder and not fs.exists(folder) then
         fs.makeDir(folder)
-        ok("Mappe: " .. folder .. "/")
+        ok("Folder: " .. folder .. "/")
     end
     local allOk = true
     for _, f in ipairs(files) do
@@ -70,14 +70,14 @@ local function makeShortcut(dst, cmd)
     local f = fs.open(dst, "w")
     f.write('shell.run("' .. cmd .. '")')
     f.close()
-    ok("Snarvei: " .. dst)
+    ok("Shortcut: " .. dst)
 end
 
 -- ── Install ───────────────────────────────────────────────────────
 local allOk = true
 
 if choice == "1" or choice == "5" then
-    line(); info("Installerer klient..."); line()
+    line(); info("Installing client..."); line()
     if not fs.exists("casino") then fs.makeDir("casino") end
     allOk = installFiles(
         {{src="client.lua", dst="casino/client.lua"}},
@@ -86,7 +86,7 @@ if choice == "1" or choice == "5" then
 end
 
 if choice == "2" or choice == "5" then
-    line(); info("Installerer admin/kasse..."); line()
+    line(); info("Installing admin/cashier..."); line()
     if not fs.exists("casino") then fs.makeDir("casino") end
     allOk = installFiles(
         {{src="admin.lua", dst="casino/admin.lua"}},
@@ -95,7 +95,7 @@ if choice == "2" or choice == "5" then
 end
 
 if choice == "3" or choice == "5" then
-    line(); info("Installerer database-server..."); line()
+    line(); info("Installing database server..."); line()
     if not fs.exists("casino") then fs.makeDir("casino") end
     allOk = installFiles(
         {{src="db.lua", dst="casino/db.lua"}},
@@ -104,7 +104,7 @@ if choice == "3" or choice == "5" then
 end
 
 if choice == "4" or choice == "5" then
-    line(); info("Installerer poker..."); line()
+    line(); info("Installing poker..."); line()
     if not fs.exists("poker") then fs.makeDir("poker") end
     allOk = installFiles({
         {src="cards.lua",  dst="poker/cards.lua"},
@@ -116,30 +116,30 @@ if choice == "4" or choice == "5" then
     makeShortcut("player", "poker/player")
 end
 
--- ── Resultat ──────────────────────────────────────────────────────
+-- ── Result ────────────────────────────────────────────────────────
 print("")
 line("=", colors.yellow)
 if allOk then
     term.setTextColor(colors.yellow)
-    print("  INSTALLASJON FULLFORT!")
+    print("  INSTALLATION COMPLETE!")
     print("")
     term.setTextColor(colors.white)
-    if choice == "1" or choice == "5" then print("  casino_app    <- spiller (lomme-PC)") end
-    if choice == "2" or choice == "5" then print("  casino_admin  <- kasse-terminal") end
-    if choice == "3" or choice == "5" then print("  casino_db     <- database-server") end
+    if choice == "1" or choice == "5" then print("  casino_app    <- player (pocket PC)") end
+    if choice == "2" or choice == "5" then print("  casino_admin  <- cashier terminal") end
+    if choice == "3" or choice == "5" then print("  casino_db     <- database server") end
     if choice == "4" or choice == "5" then
-        print("  dealer        <- poker bord-PC")
-        print("  player        <- poker spiller")
+        print("  dealer        <- poker table PC")
+        print("  player        <- poker player")
     end
     if choice == "3" or choice == "5" then
         print("")
         term.setTextColor(colors.cyan)
-        print("  Tips: Start casino_db forst!")
-        print("  Forste bruker som registrerer seg blir admin.")
+        print("  Tip: Start casino_db first!")
+        print("  First user to register becomes admin.")
     end
 else
     term.setTextColor(colors.red)
-    print("  NOEN FILER FEILET - sjekk GitHub")
+    print("  SOME FILES FAILED - check GitHub")
 end
 line("=", colors.yellow)
 term.setTextColor(colors.white)

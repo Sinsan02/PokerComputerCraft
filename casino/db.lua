@@ -1,7 +1,7 @@
 -- casino/db.lua
 -- Casino Database Server
--- Krev: Tradlos modem pa siden av maskinen
--- Start: casino_db  (snarvei satt av install.lua)
+-- Req: Wireless modem attached to this computer
+-- Start: casino_db  (shortcut created by install.lua)
 
 local PROTOCOL  = "casino"
 local DATA_FILE = "/casino_data/users"
@@ -42,9 +42,9 @@ local function handle(req, db)
 
     if t == "register" then
         if db.users[req.username] then
-            return {ok=false, msg="Brukernavnet er tatt"}
+            return {ok=false, msg="Username is already taken"}
         end
-        -- Forste bruker som registrerer seg blir automatisk admin
+        -- First user to register automatically becomes admin
         local is_admin = next(db.users) == nil
         db.users[req.username] = {
             password = hash(req.password),
@@ -56,8 +56,8 @@ local function handle(req, db)
 
     elseif t == "login" then
         local u = db.users[req.username]
-        if not u then return {ok=false, msg="Bruker ikke funnet"} end
-        if u.password ~= hash(req.password) then return {ok=false, msg="Feil passord"} end
+        if not u then return {ok=false, msg="User not found"} end
+        if u.password ~= hash(req.password) then return {ok=false, msg="Wrong password"} end
         return {ok=true, chips=u.chips, is_admin=u.is_admin}
 
     elseif t == "get_balance" then
@@ -67,26 +67,26 @@ local function handle(req, db)
 
     elseif t == "add_chips" then
         if not adminOK(db, req.admin, req.admin_password) then
-            return {ok=false, msg="Ikke autorisert"}
+            return {ok=false, msg="Unauthorized"}
         end
         local u = db.users[req.target]
-        if not u then return {ok=false, msg="Bruker ikke funnet"} end
+        if not u then return {ok=false, msg="User not found"} end
         u.chips = u.chips + req.amount
         saveDB(db)
         return {ok=true, chips=u.chips}
 
     elseif t == "set_chips" then
         if not adminOK(db, req.admin, req.admin_password) then
-            return {ok=false, msg="Ikke autorisert"}
+            return {ok=false, msg="Unauthorized"}
         end
         local u = db.users[req.target]
-        if not u then return {ok=false, msg="Bruker ikke funnet"} end
+        if not u then return {ok=false, msg="User not found"} end
         u.chips = req.amount
         saveDB(db)
         return {ok=true, chips=u.chips}
 
     elseif t == "update_chips" then
-        -- Brukes av poker-dealer for a oppdatere chips etter spill
+        -- Used by poker dealer to update chips after a game
         local u = db.users[req.username]
         if not u then return {ok=false} end
         u.chips = math.max(0, u.chips + req.delta)
@@ -95,7 +95,7 @@ local function handle(req, db)
 
     elseif t == "list_users" then
         if not adminOK(db, req.admin, req.admin_password) then
-            return {ok=false, msg="Ikke autorisert"}
+            return {ok=false, msg="Unauthorized"}
         end
         local list = {}
         for name, u in pairs(db.users) do
@@ -105,13 +105,13 @@ local function handle(req, db)
         return {ok=true, users=list}
 
     else
-        return {ok=false, msg="Ukjent kommando: " .. tostring(t)}
+        return {ok=false, msg="Unknown command: " .. tostring(t)}
     end
 end
 
 -- ── Main ──────────────────────────────────────────────────────────
 local modem = peripheral.find("modem", function(_, m) return m.isWireless() end)
-if not modem then error("Ingen tradlos modem funnet!", 0) end
+if not modem then error("No wireless modem found!", 0) end
 rednet.open(peripheral.getName(modem))
 rednet.host(PROTOCOL, "casino_server")
 
@@ -121,19 +121,19 @@ term.setCursorPos(1, 1)
 term.setTextColor(colors.yellow)
 print("=== CASINO DATABASE SERVER ===")
 term.setTextColor(colors.green)
-print("v" .. VERSION .. "  |  Klar")
+print("v" .. VERSION .. "  |  Ready")
 term.setTextColor(colors.lightGray)
-print("Protokoll: " .. PROTOCOL)
+print("Protocol: " .. PROTOCOL)
 print("")
 
 local db = loadDB()
 local userCount = 0
 for _ in pairs(db.users) do userCount = userCount + 1 end
 term.setTextColor(colors.white)
-print("Brukere i DB: " .. userCount)
+print("Users in DB: " .. userCount)
 if next(db.users) == nil then
     term.setTextColor(colors.cyan)
-    print("Tom DB - forste registrerte bruker blir admin!")
+    print("Empty DB - first registered user becomes admin!")
 end
 term.setTextColor(colors.gray)
 print(string.rep("-", term.getSize()))
@@ -148,14 +148,14 @@ while true do
         local resp = handle(msg, db)
         rednet.send(sender, resp, PROTOCOL)
 
-        local who = msg.username or msg.admin or "?"
+        local who  = msg.username or msg.admin or "?"
         local what = msg.type or "?"
         if resp.ok then
             term.setTextColor(colors.green)
             print("[" .. reqCount .. "] " .. who .. " -> " .. what .. " OK")
         else
             term.setTextColor(colors.red)
-            print("[" .. reqCount .. "] " .. who .. " -> " .. what .. " FEIL: " .. (resp.msg or "?"))
+            print("[" .. reqCount .. "] " .. who .. " -> " .. what .. " ERROR: " .. (resp.msg or "?"))
         end
         term.setTextColor(colors.white)
     end

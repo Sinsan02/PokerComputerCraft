@@ -1,13 +1,13 @@
 -- cards.lua
--- Kortpakke-bibliotek for Texas Hold'em
+-- Card deck library for Texas Hold'em
 
 local M = {}
 
 M.SUITS  = {"S", "H", "D", "C"}
 M.SYM    = {S = "\5", H = "\3", D = "\4", C = "\6"}
--- \3=♥  \4=♦  \5=♣  \6=♠  (CC:Tweaked innebygde tegn)
+-- \3=♥  \4=♦  \5=♣  \6=♠  (CC:Tweaked built-in characters)
 
--- VIKTIG: Spade/Clubs bruker svart tekst (ikke hvit) siden kort har hvit bakgrunn
+-- IMPORTANT: Spade/Clubs use black text (not white) since cards have white background
 M.CLR    = {S = colors.black, H = colors.red, D = colors.red, C = colors.black}
 M.VALS   = {"2","3","4","5","6","7","8","9","10","J","Q","K","A"}
 M.NUM    = {
