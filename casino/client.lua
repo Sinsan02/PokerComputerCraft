@@ -449,8 +449,8 @@ local function screenGames()
         term.setCursorPos(1, 3); term.setTextColor(colors.yellow)
         term.write("  Chips: " .. session.chips)
         addBtn("poker",     5, "Texas Hold'em Poker",   colors.green, colors.black)
-        addBtn("blackjack", 8, "Blackjack (coming soon)", colors.gray, colors.lightGray)
-        addBtn("rulett",   11, "Roulette  (coming soon)", colors.gray, colors.lightGray)
+        addBtn("blackjack", 8,  "Blackjack (coming soon)", colors.gray,   colors.lightGray)
+        addBtn("rulett",   11, "Roulette",                colors.purple, colors.white)
         addBtn("back",     14, "Back",                  colors.red,   colors.white)
         drawBtns()
 
@@ -465,6 +465,17 @@ local function screenGames()
                 f.write(textutils.serialize({username=session.username, chips=session.chips}))
                 f.close()
                 shell.run("poker/player")
+                refreshBalance()
+            end
+        elseif bid == "rulett" then
+            if session.chips <= 0 then
+                showMsg("Not enough chips! Visit the cashier.", colors.red)
+                os.sleep(2)
+            else
+                local f = fs.open(SESSION_FILE, "w")
+                f.write(textutils.serialize({username=session.username, chips=session.chips}))
+                f.close()
+                shell.run("roulette/player")
                 refreshBalance()
             end
         elseif bid == "back" then return end

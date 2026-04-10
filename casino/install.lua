@@ -32,10 +32,11 @@ print("  1. Client     (pocket PC / player)")
 print("  2. Admin      (cashier terminal)")
 print("  3. DB Server  (database server)")
 print("  4. Poker      (dealer table + player)")
-print("  5. All")
+print("  5. Roulette   (table + player)")
+print("  6. All")
 print("")
 term.setTextColor(colors.cyan)
-io.write("Choice [1-5]: ")
+io.write("Choice [1-6]: ")
 term.setTextColor(colors.white)
 local choice = read()
 print("")
@@ -103,7 +104,7 @@ if choice == "3" or choice == "5" then
     makeShortcut("casino_db", "casino/db")
 end
 
-if choice == "4" or choice == "5" then
+if choice == "4" or choice == "6" then
     line(); info("Installing poker..."); line()
     if not fs.exists("poker") then fs.makeDir("poker") end
     allOk = installFiles({
@@ -114,6 +115,18 @@ if choice == "4" or choice == "5" then
     }, POKER_BASE, nil) and allOk
     makeShortcut("dealer", "poker/dealer")
     makeShortcut("player", "poker/player")
+end
+
+local ROULETTE_BASE = "https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/roulette/"
+if choice == "5" or choice == "6" then
+    line(); info("Installing roulette..."); line()
+    if not fs.exists("roulette") then fs.makeDir("roulette") end
+    allOk = installFiles({
+        {src="table.lua",  dst="roulette/table.lua"},
+        {src="player.lua", dst="roulette/player.lua"},
+    }, ROULETTE_BASE, nil) and allOk
+    makeShortcut("roulette_table",  "roulette/table")
+    makeShortcut("roulette_player", "roulette/player")
 end
 
 -- ── Result ────────────────────────────────────────────────────────
@@ -127,11 +140,15 @@ if allOk then
     if choice == "1" or choice == "5" then print("  casino_app    <- player (pocket PC)") end
     if choice == "2" or choice == "5" then print("  casino_admin  <- cashier terminal") end
     if choice == "3" or choice == "5" then print("  casino_db     <- database server") end
-    if choice == "4" or choice == "5" then
-        print("  dealer        <- poker table PC")
-        print("  player        <- poker player")
+    if choice == "4" or choice == "6" then
+        print("  dealer           <- poker table PC")
+        print("  player           <- poker player")
     end
-    if choice == "3" or choice == "5" then
+    if choice == "5" or choice == "6" then
+        print("  roulette_table   <- roulette table (4x6 monitor)")
+        print("  roulette_player  <- roulette player (pocket PC)")
+    end
+    if choice == "3" or choice == "6" then
         print("")
         term.setTextColor(colors.cyan)
         print("  Tip: Start casino_db first!")
