@@ -165,13 +165,13 @@ end
 -- ── Monitor helpers ───────────────────────────────────────────────
 local function mset(x, y, bg, fg)
     mon.setCursorPos(x, y)
-    mon.setBackgroundColor(bg)
-    mon.setTextColor(fg)
+    mon.setBackgroundColor(bg or colors.black)
+    mon.setTextColor(fg or colors.white)
 end
 
 local function mfill(x1, y1, x2, y2, bg, ch)
     ch = ch or " "
-    mon.setBackgroundColor(bg)
+    mon.setBackgroundColor(bg or colors.black)
     local row = string.rep(ch, x2 - x1 + 1)
     for y = y1, y2 do mon.setCursorPos(x1, y); mon.write(row) end
 end
@@ -323,7 +323,7 @@ local function drawGrid()
 
     -- Column bets (right side)
     local cbX = ZERO_W + NUM_COLS * NUM_W + 1
-    local colBets = {{"col3","2:1",colors.orange},{"col2","2:1",colors.orange},{"col1","2:1",colors.orange}}
+    local colBets = {{"col3","2:1",colors.yellow},{"col2","2:1",colors.yellow},{"col1","2:1",colors.yellow}}
     for i, cb in ipairs(colBets) do
         local y = numCellY(i)
         mfill(cbX, y, cbX + COL_BET_W - 2, y + NUM_H - 2, cb[3])
