@@ -19,7 +19,7 @@ local mon = peripheral.find("monitor")
 if not mon then
     print("ERROR: No monitor found!"); return
 end
-mon.setTextScale(0.5)
+mon.setTextScale(0.75)
 
 local modemName
 for _, name in ipairs(peripheral.getNames()) do
@@ -227,10 +227,18 @@ local function drawPlayerSlot(x, y, player, idx, slotW)
     mon.write(nameStr)
 
     -- Row 1: mini-cards + balance
-    local showFace = (game.phase == "showdown") and not player.folded
-    drawMiniCard(x,   y+1, player.hand and player.hand[1], not showFace, slotBg)
-    mon.setBackgroundColor(slotBg); mon.setCursorPos(x+3, y+1); mon.write(" ")
-    drawMiniCard(x+4, y+1, player.hand and player.hand[2], not showFace, slotBg)
+    if player.folded then
+        -- Hide cards when folded
+        mon.setBackgroundColor(slotBg)
+        mon.setCursorPos(x, y+1)
+        mon.setTextColor(colors.gray)
+        mon.write(string.format("%-" .. slotW .. "s", "[folded]"):sub(1, slotW))
+    else
+        local showFace = (game.phase == "showdown")
+        drawMiniCard(x,   y+1, player.hand and player.hand[1], not showFace, slotBg)
+        mon.setBackgroundColor(slotBg); mon.setCursorPos(x+3, y+1); mon.write(" ")
+        drawMiniCard(x+4, y+1, player.hand and player.hand[2], not showFace, slotBg)
+    end
     mon.setBackgroundColor(slotBg)
     mon.setTextColor(colors.black)
     mon.setCursorPos(x+8, y+1)
