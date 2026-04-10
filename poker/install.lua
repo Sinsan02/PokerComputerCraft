@@ -1,9 +1,9 @@
 -- install.lua
 -- Automatisk installasjon av Texas Hold'em Poker for ComputerCraft
--- Last ned: wget https://raw.githubusercontent.com/Sinsan02/PokerComputerCraft/main/install.lua
+-- Last ned: wget https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/poker/install.lua
 -- Kjor:     install
 
-local BASE = "https://raw.githubusercontent.com/Sinsan02/PokerComputerCraft/main/"
+local BASE = "https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/poker/"
 
 local FILES = {
     {src = "cards.lua",  dst = "poker/cards.lua"},
