@@ -271,14 +271,14 @@ local function drawPlayerSlot(x, y, player, idx)
 end
 
 local function drawEmptySlot(x, y, idx)
-    mon.setBackgroundColor(colors.black)
-    mon.setTextColor(colors.gray)
+    mon.setBackgroundColor(colors.green)
+    mon.setTextColor(colors.lime)
     for dy = 0, SLOT_H - 1 do
         mon.setCursorPos(x, y + dy)
         mon.write(string.rep(" ", SLOT_W))
     end
     mon.setCursorPos(x, y)
-    mon.write((idx .. ". [ empty seat ]"):sub(1, SLOT_W))
+    mon.write((idx .. ". [ empty ]"):sub(1, SLOT_W))
 end
 
 local function drawTable()
@@ -306,25 +306,21 @@ local function drawTable()
 
     -- ── Layout calculations ───────────────────────────────────────
     local cardH     = 5
-    local cardY     = math.floor(H / 2) - 3          -- community cards top row
+    local cardY     = math.floor(H / 2) - 1          -- community cards top row
     local potRow    = cardY + cardH + 1               -- chip display row
     local potTxtRow = potRow + 1                      -- "POT: $x" text row
     local betTxtRow = potTxtRow + 1                   -- "Bet: $x" text row
 
-    -- Seat mid-row: safely below the pot area
-    local midY = math.max(betTxtRow + 2, math.floor(H * 0.68))
-    -- Seat bottom-center row: near bottom (1 row footer)
-    local botY = H - SLOT_H
-
-    -- ── 5 seat positions ─────────────────────────────────────────
-    --   3 (top-left)       4 (top-right)
-    --   2 (mid-left)       5 (mid-right)
-    --          1 (bottom-center)
+    -- ── 5 seat positions (half-circle: top + sides, no bottom) ───
+    --   2 (top-left)   3 (top-center)   4 (top-right)
+    --   1 (mid-left)                    5 (mid-right)
+    local topY  = 3
+    local midY  = math.max(cardY - 1, topY + SLOT_H + 1)
     local seats = {
-        {math.floor(W/2) - math.floor(SLOT_W/2), botY},  -- 1 bottom-center
-        {2,                                        midY},  -- 2 mid-left
-        {2,                                        3},     -- 3 top-left
-        {W - SLOT_W - 1,                           3},     -- 4 top-right
+        {2,                                        midY},  -- 1 mid-left
+        {2,                                        topY},  -- 2 top-left
+        {math.floor(W/2) - math.floor(SLOT_W/2),  topY},  -- 3 top-center
+        {W - SLOT_W - 1,                           topY},  -- 4 top-right
         {W - SLOT_W - 1,                           midY},  -- 5 mid-right
     }
     for i = 1, 5 do
