@@ -200,7 +200,7 @@ local function drawPlayerSlot(x, y, player, idx, slotW)
     )
 
     -- Teal background: visible on green table, no black areas
-    local slotBg = isCurrent and colors.cyan or colors.teal
+    local slotBg = isCurrent and colors.cyan or colors.lightBlue
     mon.setBackgroundColor(slotBg)
     for dy = 0, 2 do
         mon.setCursorPos(x, y + dy)
@@ -239,11 +239,11 @@ local function drawPlayerSlot(x, y, player, idx, slotW)
         mon.setTextColor(colors.black)
         mon.write(string.format("%-" .. slotW .. "s", ">> YOUR TURN"):sub(1, slotW))
     elseif isWinner then
-        mon.setBackgroundColor(colors.teal)
+        mon.setBackgroundColor(colors.lightBlue)
         mon.setTextColor(colors.yellow)
         mon.write(string.format("%-" .. slotW .. "s", "** WINNER! **"):sub(1, slotW))
     elseif game.phase == "showdown" and not player.folded then
-        mon.setBackgroundColor(colors.teal)
+        mon.setBackgroundColor(colors.lightBlue)
         mon.setTextColor(colors.lime)
         local handName = ""
         for _, r in ipairs(game.results) do
