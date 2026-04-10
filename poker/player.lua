@@ -43,13 +43,16 @@ local function casinoRequest(msg)
     return resp
 end
 
-local function syncCasinoOnExit(finalChips)
+local function syncCasino(currentChips)
     if not casinoUser then return end
+    local delta = currentChips - casinoStart
+    if delta == 0 then return end
     casinoRequest({
         type     = "update_chips",
         username = casinoUser,
-        delta    = finalChips - casinoStart,
+        delta    = delta,
     })
+    casinoStart = currentChips  -- reset so next sync only sends the new delta
 end
 
 -- =====================================================
@@ -395,6 +398,7 @@ local function handleMsg(senderID, msg)
             if pd.name == st.name then st.myBalance = pd.balance; break end
         end
         st.msg = "New round. Waiting for dealer..."
+        syncCasino(st.myBalance)  -- save chips to DB after every completed round
         rednet.broadcast(textutils.serialize({
             type="join", name=playerName, balance=st.myBalance
         }), PROTOCOL)
@@ -476,7 +480,7 @@ while true do
             if st.dealerID then
                 rednet.send(st.dealerID, textutils.serialize({type="leave"}), PROTOCOL)
             end
-            syncCasinoOnExit(st.myBalance)
+            syncCasino(st.myBalance)
             term.setBackgroundColor(colors.black)
             term.setTextColor(colors.white)
             term.clear(); term.setCursorPos(1,1)
