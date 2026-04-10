@@ -9,7 +9,7 @@ local eval  = dofile(fs.combine(dir, "eval.lua"))
 
 local PROTOCOL   = "txpoker"
 local MIN_PLAYERS = 2
-local MAX_PLAYERS = 8
+local MAX_PLAYERS = 5
 local MIN_RAISE   = 10
 
 -- =====================================================
@@ -104,6 +104,51 @@ local function mfill(x1, y1, x2, y2, char, bg)
     for y = y1, y2 do mon.setCursorPos(x1, y); mon.write(row) end
 end
 
+-- ── Chip visualization ────────────────────────────────────────────
+-- Each chip denomination is shown as a colored square.
+-- Stack grows wider as the amount increases.
+local CHIP_DENOM = {
+    {val=1000, clr=colors.red},
+    {val=500,  clr=colors.purple},
+    {val=100,  clr=colors.blue},
+    {val=25,   clr=colors.lime},
+    {val=5,    clr=colors.gray},
+}
+
+local function getChipList(amount)
+    local result = {}
+    local rem = math.max(0, amount)
+    for _, d in ipairs(CHIP_DENOM) do
+        local cnt = math.min(math.floor(rem / d.val), 6)
+        for _ = 1, cnt do result[#result+1] = d.clr end
+        rem = rem % d.val
+        if #result >= 18 then break end
+    end
+    if #result == 0 and amount > 0 then result[1] = colors.gray end
+    return result
+end
+
+-- Draw chip row; fills the full maxW area (clears stale chips).
+-- bg: background color for empty cells. Returns chip count drawn.
+local function drawChipRow(x, y, amount, maxW, bg)
+    bg   = bg   or colors.green
+    maxW = maxW or 10
+    local chips = getChipList(amount)
+    local count = math.min(#chips, maxW)
+    mon.setCursorPos(x, y)
+    for i = 1, count do
+        mon.setBackgroundColor(chips[i])
+        mon.write(" ")
+    end
+    if count < maxW then
+        mon.setBackgroundColor(bg)
+        mon.write(string.rep(" ", maxW - count))
+    end
+    mon.setBackgroundColor(bg)
+    return count
+end
+
+-- ── Community card (5w × 5h) ──────────────────────────────────────
 local function drawMonCard(mx, my, card)
     if not card then
         mon.setBackgroundColor(colors.green)
@@ -130,18 +175,124 @@ local function drawMonCard(mx, my, card)
     mon.setTextColor(colors.black); mon.write("+---+")
 end
 
+-- ── Mini card (3w × 1h) ───────────────────────────────────────────
+-- faceDown=true shows card back (blue). false/nil shows face.
+local function drawMiniCard(mx, my, card, faceDown)
+    mon.setCursorPos(mx, my)
+    if faceDown or not card then
+        mon.setBackgroundColor(colors.blue)
+        mon.setTextColor(colors.lightBlue)
+        mon.write("???")
+    else
+        mon.setBackgroundColor(colors.white)
+        mon.setTextColor(cards.CLR[card.suit])
+        mon.write(string.format("%-3s", card.value .. cards.SYM[card.suit]):sub(1, 3))
+    end
+    mon.setBackgroundColor(colors.green)
+end
+
+-- ── Player slot (SLOT_W × SLOT_H) ────────────────────────────────
+-- Layout per slot (19 wide, 4 tall):
+--   Row 0: "N. PlayerName        [F]"   name + fold/allin tag
+--   Row 1: "??? ??? $balance"           mini cards + balance
+--   Row 2: "bet:████████ $amount"       chip row + bet amount
+--   Row 3: ">> YOUR TURN / hand name"   turn indicator or showdown
+local SLOT_W = 19
+local SLOT_H = 4
+
+local function drawPlayerSlot(x, y, player, idx)
+    local isCurrent = game.betting and game.players[game.actionIdx] == player
+    local isWinner  = game.winner and (
+        game.winner == player.name or
+        game.winner:find(player.name, 1, true) ~= nil
+    )
+
+    -- Background fill
+    mon.setBackgroundColor(colors.black)
+    for dy = 0, SLOT_H - 1 do
+        mon.setCursorPos(x, y + dy)
+        mon.write(string.rep(" ", SLOT_W))
+    end
+
+    -- Row 0: name + status tag
+    local nameClr = colors.white
+    if isWinner        then nameClr = colors.yellow
+    elseif isCurrent   then nameClr = colors.cyan
+    elseif player.folded then nameClr = colors.gray
+    end
+    local tag = player.folded and "[F]" or (player.allIn and "[A]" or "")
+    local nameMax  = SLOT_W - #tag - 3
+    local nameLine = string.format("%-" .. SLOT_W .. "s",
+        idx .. ". " .. player.name:sub(1, nameMax) .. tag):sub(1, SLOT_W)
+    mon.setCursorPos(x, y)
+    mon.setBackgroundColor(colors.black)
+    mon.setTextColor(nameClr)
+    mon.write(nameLine)
+
+    -- Row 1: mini cards + balance
+    local showFace = (game.phase == "showdown") and not player.folded
+    drawMiniCard(x,   y+1, player.hand and player.hand[1], not showFace)
+    mon.setBackgroundColor(colors.black); mon.setCursorPos(x+3, y+1); mon.write(" ")
+    drawMiniCard(x+4, y+1, player.hand and player.hand[2], not showFace)
+    mon.setBackgroundColor(colors.black)
+    mon.setTextColor(colors.yellow)
+    mon.setCursorPos(x+8, y+1)
+    mon.write(string.format("$%-5d", player.balance):sub(1, SLOT_W - 8))
+
+    -- Row 2: chip bet display (8-cell fixed area) + bet amount
+    mon.setCursorPos(x, y+2)
+    mon.setBackgroundColor(colors.black)
+    mon.setTextColor(colors.lightGray)
+    mon.write("bet:")
+    drawChipRow(x+4, y+2, player.roundBet, 8, colors.black)
+    mon.setTextColor(colors.white)
+    mon.setCursorPos(x+12, y+2)
+    mon.write(string.format("$%-6d", player.roundBet):sub(1, SLOT_W - 12))
+
+    -- Row 3: turn indicator / showdown hand name
+    mon.setCursorPos(x, y+3)
+    mon.setBackgroundColor(colors.black)
+    if isCurrent then
+        mon.setBackgroundColor(colors.cyan)
+        mon.setTextColor(colors.black)
+        mon.write(string.format("%-" .. SLOT_W .. "s", ">> YOUR TURN"):sub(1, SLOT_W))
+        mon.setBackgroundColor(colors.green)
+    elseif isWinner then
+        mon.setTextColor(colors.yellow)
+        mon.write(string.format("%-" .. SLOT_W .. "s", "*** WINNER! ***"):sub(1, SLOT_W))
+    elseif game.phase == "showdown" and not player.folded then
+        mon.setTextColor(colors.lime)
+        local handName = ""
+        for _, r in ipairs(game.results) do
+            if r.name == player.name then handName = r.handName; break end
+        end
+        mon.write(handName:sub(1, SLOT_W))
+    end
+end
+
+local function drawEmptySlot(x, y, idx)
+    mon.setBackgroundColor(colors.black)
+    mon.setTextColor(colors.gray)
+    for dy = 0, SLOT_H - 1 do
+        mon.setCursorPos(x, y + dy)
+        mon.write(string.rep(" ", SLOT_W))
+    end
+    mon.setCursorPos(x, y)
+    mon.write((idx .. ". [ empty seat ]"):sub(1, SLOT_W))
+end
+
 local function drawTable()
     local W, H = mon.getSize()
     mfill(1, 1, W, H, " ", colors.green)
 
-    -- Title
+    -- Header (row 1)
     local title = "=== TEXAS HOLD'EM POKER ==="
     mon.setCursorPos(math.floor((W - #title) / 2) + 1, 1)
     mon.setBackgroundColor(colors.green)
     mon.setTextColor(colors.yellow)
     mon.write(title)
 
-    -- Phase
+    -- Phase / turn (row 2)
     local phaseNames = {
         lobby="LOBBY", deal="CARDS DEALT",
         flop="FLOP", turn="TURN", river="RIVER", showdown="SHOWDOWN"
@@ -153,83 +304,84 @@ local function drawTable()
     mon.setCursorPos(math.floor((W - #phStr) / 2) + 1, 2)
     mon.setTextColor(colors.white); mon.write(phStr)
 
-    -- Community cards
-    local cardW = 5; local cardH = 5; local spacing = 1
-    local totalW = 5 * cardW + 4 * spacing
-    local startX = math.floor((W - totalW) / 2) + 1
-    local startY = 4
+    -- ── Layout calculations ───────────────────────────────────────
+    local cardH     = 5
+    local cardY     = math.floor(H / 2) - 3          -- community cards top row
+    local potRow    = cardY + cardH + 1               -- chip display row
+    local potTxtRow = potRow + 1                      -- "POT: $x" text row
+    local betTxtRow = potTxtRow + 1                   -- "Bet: $x" text row
+
+    -- Seat mid-row: safely below the pot area
+    local midY = math.max(betTxtRow + 2, math.floor(H * 0.68))
+    -- Seat bottom-center row: near bottom (1 row footer)
+    local botY = H - SLOT_H
+
+    -- ── 5 seat positions ─────────────────────────────────────────
+    --   3 (top-left)       4 (top-right)
+    --   2 (mid-left)       5 (mid-right)
+    --          1 (bottom-center)
+    local seats = {
+        {math.floor(W/2) - math.floor(SLOT_W/2), botY},  -- 1 bottom-center
+        {2,                                        midY},  -- 2 mid-left
+        {2,                                        3},     -- 3 top-left
+        {W - SLOT_W - 1,                           3},     -- 4 top-right
+        {W - SLOT_W - 1,                           midY},  -- 5 mid-right
+    }
     for i = 1, 5 do
-        drawMonCard(startX + (i-1)*(cardW+spacing), startY, game.community[i])
+        local sx, sy = seats[i][1], seats[i][2]
+        if game.players[i] then
+            drawPlayerSlot(sx, sy, game.players[i], i)
+        else
+            drawEmptySlot(sx, sy, i)
+        end
     end
 
-    -- Pot and current bet
-    local potStr = "Pot: $" .. game.pot
-    if game.currentBet > 0 then
-        potStr = potStr .. "  |  Current bet: $" .. game.currentBet
+    -- ── Community cards (centered) ────────────────────────────────
+    local cardW   = 5; local spacing = 1
+    local totalCW = 5 * cardW + 4 * spacing
+    local cardX   = math.floor((W - totalCW) / 2) + 1
+    for i = 1, 5 do
+        drawMonCard(cardX + (i-1)*(cardW+spacing), cardY, game.community[i])
     end
-    mon.setCursorPos(2, startY + cardH + 1)
+
+    -- ── Pot chip row ─────────────────────────────────────────────
+    local potChips = getChipList(game.pot)
+    local chipW    = math.min(#potChips, 20)
+    if chipW > 0 then
+        drawChipRow(math.floor((W - chipW) / 2) + 1, potRow, game.pot, 20)
+    end
+
+    -- ── Pot text ─────────────────────────────────────────────────
+    local potStr = "POT: $" .. game.pot
+    mon.setCursorPos(math.floor((W - #potStr) / 2) + 1, potTxtRow)
     mon.setBackgroundColor(colors.green)
     mon.setTextColor(colors.yellow)
     mon.write(potStr)
 
-    -- Player list with balance and bet
-    local listY = startY + cardH + 2
-    mon.setCursorPos(2, listY)
-    mon.setTextColor(colors.lightGray)
-    mon.write("Players:")
-
-    for i, p in ipairs(game.players) do
-        if listY + i > H - 2 then break end
-        mon.setCursorPos(2, listY + i)
-
-        local isCurrent = game.betting and (i == game.actionIdx)
-        local status = ""
-        if p.folded  then status = " [FOLD]"
-        elseif p.allIn then status = " [ALL-IN]"
-        end
-
-        local handName = ""
-        if game.phase == "showdown" then
-            for _, r in ipairs(game.results) do
-                if r.name == p.name then handName = " [" .. r.handName .. "]"; break end
-            end
-        end
-
-        local pLine = string.format("%d. %-10s $%-5d bet:$%d%s%s",
-            i, p.name, p.balance, p.roundBet, status, handName)
-        if #pLine > W - 3 then pLine = pLine:sub(1, W - 3) end
-
-        if game.winner and p.name == game.winner then
-            mon.setTextColor(colors.yellow)
-        elseif isCurrent then
-            mon.setTextColor(colors.cyan)
-        elseif p.folded then
-            mon.setTextColor(colors.gray)
-        else
-            mon.setTextColor(colors.white)
-        end
-
-        mon.write(pLine)
-        mon.setBackgroundColor(colors.green)
-        local pad = W - 2 - #pLine
-        if pad > 0 then mon.write(string.rep(" ", pad)) end
+    if game.currentBet > 0 then
+        local betStr = "Bet: $" .. game.currentBet
+        mon.setCursorPos(math.floor((W - #betStr) / 2) + 1, betTxtRow)
+        mon.setTextColor(colors.white)
+        mon.write(betStr)
     end
 
-    -- Winner banner
+    -- ── Winner banner (last row) ─────────────────────────────────
     if game.winner then
         local wStr = " WINNER: " .. game.winner .. " - " .. (game.winHand or "") .. " "
         if #wStr > W then wStr = wStr:sub(1, W) end
-        local wx = math.floor((W - #wStr) / 2) + 1
-        mon.setCursorPos(wx, H - 1)
+        mon.setCursorPos(math.floor((W - #wStr) / 2) + 1, H)
         mon.setBackgroundColor(colors.yellow)
         mon.setTextColor(colors.black)
         mon.write(wStr)
         mon.setBackgroundColor(colors.green)
     end
 
-    mon.setCursorPos(W - 14, H)
+    -- Dealer ID (bottom-right corner)
+    local idStr = "ID:" .. os.getComputerID()
+    mon.setCursorPos(W - #idStr, H)
+    mon.setBackgroundColor(colors.green)
     mon.setTextColor(colors.gray)
-    mon.write("Dealer ID: " .. os.getComputerID())
+    mon.write(idStr)
 end
 
 -- =====================================================
