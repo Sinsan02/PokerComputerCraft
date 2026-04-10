@@ -199,8 +199,8 @@ local function drawMain()
             {"black", "BLACK", colors.gray,   colors.white},
             {"even",  "EVEN",  colors.blue,   colors.white},
             {"odd",   "ODD",   colors.blue,   colors.white},
-            {"low",   "1-18",  colors.teal,   colors.white},
-            {"high",  "19-36", colors.teal,   colors.white},
+            {"low",   "1-18",  colors.cyan,   colors.white},
+            {"high",  "19-36", colors.cyan,   colors.white},
         }
         for i, ob in ipairs(outsideBets) do
             local col = (i-1) % 2

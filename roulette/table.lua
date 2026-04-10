@@ -336,9 +336,9 @@ local function drawGrid()
     local dozenY = GY + NUM_ROWS * NUM_H
     local dW     = math.floor((MW - ZERO_W - COL_BET_W) / 3)
     local dozens = {
-        {ZERO_W+1,         dW,   "dozen1","1st 12",colors.teal},
-        {ZERO_W+dW+1,      dW,   "dozen2","2nd 12",colors.teal},
-        {ZERO_W+dW*2+1,    dW-1, "dozen3","3rd 12",colors.teal},
+        {ZERO_W+1,         dW,   "dozen1","1st 12",colors.cyan},
+        {ZERO_W+dW+1,      dW,   "dozen2","2nd 12",colors.cyan},
+        {ZERO_W+dW*2+1,    dW-1, "dozen3","3rd 12",colors.cyan},
     }
     for _, d in ipairs(dozens) do
         mfill(d[1], dozenY, d[1]+d[2]-1, dozenY+1, d[5])
