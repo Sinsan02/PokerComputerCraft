@@ -186,27 +186,46 @@ local function mwriteC(y, text, bg, fg, x1, x2)
 end
 
 -- ── Layout constants ──────────────────────────────────────────────
--- Row 1:        title bar
--- Rows 2..MH-9: WHEEL (dominates, ~85% of height)
--- Row MH-8:     [gap / wheel border]
--- Rows MH-7..MH-5: compact number grid (3 rows, 1 per roulette row)
--- Row MH-4:     dozen bets
--- Row MH-3:     outside bets (1-18 / Even / Red / Black / Odd / 19-36)
--- Row MH-2:     separator
+-- Row 1:         title bar
+-- Rows 2..MH-14: WHEEL (large, ~70% of height)
+-- Row MH-13..MH-12: [gap]
+-- Rows MH-12..MH-3: number grid (NUM_H=2, dozen, outside = 10 rows)
+-- Row MH-2:      separator
 -- Rows MH-1..MH: player list
 
 local WY1  = 2
-local WY2  = MH - 9
+local WY2  = MH - 14
 local WMID = math.floor((WY1 + WY2) / 2)
 
 local GY        = WY2 + 2        -- number grid starts here
 local NUM_ROWS  = 3
 local NUM_COLS  = 12
+local NUM_H     = 2               -- 2-row cells → double grid height
 local ZERO_W    = 3
 local COL_BET_W = 4
 local NUM_W     = math.max(3, math.floor((MW - ZERO_W - COL_BET_W) / NUM_COLS))
 
--- ── Wheel (full-height, dominant) ─────────────────────────────────
+-- ── Wheel ─────────────────────────────────────────────────────────
+local AW = 5   -- arrow width (bold: 5 chars)
+local AH = 5   -- arrow height (bold: 5 rows)
+
+local function drawArrows(num)
+    local bx = 1 + BCELL * CW
+    local label = string.format("[%2d]", num)
+    -- Left arrows: >>>>> pointing right toward ball cell
+    if bx - AW - 1 >= 1 then
+        for dy = -(AH//2), AH//2 do
+            mwrite(bx - AW - 1, WMID + dy, string.rep(">", AW), colors.black, colors.yellow)
+        end
+    end
+    -- Right arrows: <<<<< pointing left toward ball cell
+    if bx + CW + AW - 1 <= MW then
+        for dy = -(AH//2), AH//2 do
+            mwrite(bx + CW, WMID + dy, string.rep("<", AW), colors.black, colors.yellow)
+        end
+    end
+end
+
 local function drawWheel(offset, stopped, stoppedNum)
     mfill(1, WY1, MW, WY2, colors.black)
 
@@ -219,46 +238,37 @@ local function drawWheel(offset, stopped, stoppedNum)
         local x      = 1 + i * CW
         local x2     = x + CW - 2  -- right border gap
 
+        -- All cells same structure: color block with black right gap
+        mfill(x,          WY1, x2,          WY2, bg)
+        mfill(x + CW - 1, WY1, x + CW - 1, WY2, colors.black)
+
         if isBall then
-            -- Full-height yellow highlight for ball position
-            mfill(x, WY1, x + CW - 1, WY2, colors.yellow)
-            -- Top half: downward arrows pointing at the number
-            for y = WY1 + 1, WMID - 2 do
-                mwriteC(y, "v", colors.yellow, colors.red, x, x + CW - 1)
-            end
-            -- Number and color label at center
-            mwriteC(WMID - 1, string.format(" %2d ", num), colors.yellow, colors.black, x, x + CW - 1)
-            local clrLabel = (num == 0) and " GRN " or (RED[num] and " RED " or " BLK ")
-            mwriteC(WMID,     clrLabel,                   colors.yellow, colors.black, x, x + CW - 1)
-            -- Bottom half: upward arrows
-            for y = WMID + 2, WY2 - 1 do
-                mwriteC(y, "^", colors.yellow, colors.red, x, x + CW - 1)
-            end
+            -- Ball cell: normal color but number in yellow for contrast
+            mwriteC(WMID, string.format("%2d", num), bg, colors.yellow, x, x2)
         else
-            -- Normal cell: color block with number in the middle
-            mfill(x,          WY1, x2,          WY2, bg)
-            mfill(x + CW - 1, WY1, x + CW - 1, WY2, colors.black)  -- right gap
             mwriteC(WMID, string.format("%2d", num), bg, colors.white, x, x2)
         end
     end
 
-    -- Black top/bottom rail rows
+    -- Bold yellow arrows pointing at ball (in the middle of the wheel)
+    drawArrows(WHEEL[((offset - 1 + BCELL) % WLEN + WLEN) % WLEN + 1])
+
+    -- Black top/bottom rails
     mfill(1, WY1, MW, WY1, colors.black)
     mfill(1, WY2, MW, WY2, colors.black)
 
-    -- Result: side arrows + top/bottom flash on ball cell
+    -- Result: extra bright arrows
     if stopped and stoppedNum ~= nil then
         local bx = 1 + BCELL * CW
-        mfill(bx, WY1, bx + CW - 2, WY1, colors.yellow)
-        mfill(bx, WY2, bx + CW - 2, WY2, colors.yellow)
-        if bx > 4 then
-            for dy = -1, 1 do
-                mwrite(bx - 3, WMID + dy, ">>>", colors.black, colors.yellow)
+        -- Extra emphasis: extend arrows by 2 more rows
+        if bx - AW - 1 >= 1 then
+            for dy = -(AH//2+1), AH//2+1 do
+                mwrite(bx - AW - 1, WMID + dy, string.rep(">", AW), colors.black, colors.yellow)
             end
         end
-        if bx + CW + 2 <= MW then
-            for dy = -1, 1 do
-                mwrite(bx + CW, WMID + dy, "<<<", colors.black, colors.yellow)
+        if bx + CW + AW - 1 <= MW then
+            for dy = -(AH//2+1), AH//2+1 do
+                mwrite(bx + CW, WMID + dy, string.rep("<", AW), colors.black, colors.yellow)
             end
         end
     end
@@ -297,19 +307,21 @@ local function numGridPos(n)
 end
 
 local function numCellX(col) return ZERO_W + 1 + (col - 1) * NUM_W end
-local function numCellY(row) return GY + (row - 1) end  -- 1 row per cell
+local function numCellY(row) return GY + (row - 1) * NUM_H end
 
 local function drawGrid()
-    -- Background: 3 number rows + 1 dozen + 1 outside = 5 rows
-    mfill(1, GY, MW, GY + 4, colors.green)
+    -- Background: 3×NUM_H number rows + 2 dozen + 2 outside = 10 rows
+    local gridH = NUM_ROWS * NUM_H + 4
+    mfill(1, GY, MW, GY + gridH - 1, colors.green)
 
-    -- 0 cell (spans all 3 number rows on the left)
-    mfill(1, GY, ZERO_W, GY + 2, colors.lime)
-    mwriteC(GY + 1, "0", colors.lime, colors.white, 1, ZERO_W)
+    -- 0 cell (spans all number rows on the left)
+    local zH = NUM_ROWS * NUM_H
+    mfill(1, GY, ZERO_W, GY + zH - 1, colors.lime)
+    mwriteC(GY + math.floor(zH / 2), "0", colors.lime, colors.white, 1, ZERO_W)
     local za = betAmount("number", 0)
-    if za > 0 then showBet(2, GY + 1, za) end
+    if za > 0 then showBet(2, GY + math.floor(zH / 2), za) end
 
-    -- Number cells (1 row each)
+    -- Number cells (NUM_H rows each: content row + green border row)
     for n = 1, 36 do
         local col, row = numGridPos(n)
         local x   = numCellX(col)
@@ -319,27 +331,32 @@ local function drawGrid()
         local cbg = isR and colors.yellow or bg
         local cfg = isR and colors.black  or colors.white
 
-        mfill(x, y, x + NUM_W - 2, y, cbg)
-        mfill(x + NUM_W - 1, y, x + NUM_W - 1, y, colors.green)  -- gap
+        -- Content rows (all but last row of cell)
+        mfill(x, y, x + NUM_W - 2, y + NUM_H - 2, cbg)
+        -- Right border
+        mfill(x + NUM_W - 1, y, x + NUM_W - 1, y + NUM_H - 2, colors.green)
+        -- Bottom border row
+        mfill(x, y + NUM_H - 1, x + NUM_W - 1, y + NUM_H - 1, colors.green)
+
         local lbl = string.format("%-" .. (NUM_W - 1) .. "s", tostring(n)):sub(1, NUM_W - 1)
         mwrite(x, y, lbl, cbg, cfg)
         local amt = betAmount("number", n)
         if amt > 0 then showBet(x + NUM_W - 2, y, amt) end
     end
 
-    -- Column bets (right side, 1 row each)
+    -- Column bets (right side, NUM_H rows each)
     local cbX = ZERO_W + NUM_COLS * NUM_W + 1
     local colBets = {{"col3","2:1"},{"col2","2:1"},{"col1","2:1"}}
     for i, cb in ipairs(colBets) do
         local y = numCellY(i)
-        mfill(cbX, y, cbX + COL_BET_W - 1, y, colors.yellow)
+        mfill(cbX, y, cbX + COL_BET_W - 1, y + NUM_H - 1, colors.yellow)
         mwriteC(y, cb[2], colors.yellow, colors.black, cbX, cbX + COL_BET_W - 1)
         local amt = betAmountType(cb[1])
         if amt > 0 then showBet(cbX, y, amt) end
     end
 
-    -- Dozen row (row GY+3)
-    local dozenY = GY + NUM_ROWS
+    -- Dozen row (2 rows, after number grid)
+    local dozenY = GY + NUM_ROWS * NUM_H
     local dW = math.floor((MW - ZERO_W - COL_BET_W) / 3)
     local dozens = {
         {ZERO_W+1,        dW,                             "dozen1","1st 12",colors.cyan},
@@ -347,15 +364,15 @@ local function drawGrid()
         {ZERO_W+dW*2+1,   MW - ZERO_W - COL_BET_W - dW*2,"dozen3","3rd 12",colors.cyan},
     }
     for _, d in ipairs(dozens) do
-        mfill(d[1], dozenY, d[1]+d[2]-1, dozenY, d[5])
+        mfill(d[1], dozenY, d[1]+d[2]-1, dozenY+1, d[5])
         mwriteC(dozenY, d[4], d[5], colors.white, d[1], d[1]+d[2]-1)
         local amt = betAmountType(d[3])
         if amt > 0 then showBet(d[1], dozenY, amt) end
     end
-    mfill(cbX, dozenY, cbX + COL_BET_W - 1, dozenY, colors.black)
+    mfill(cbX, dozenY, cbX + COL_BET_W - 1, dozenY + 1, colors.black)
 
-    -- Outside bets (row GY+4)
-    local outsideY = dozenY + 1
+    -- Outside bets (2 rows)
+    local outsideY = dozenY + 2
     local oW = math.floor(MW / 6)
     local outside = {
         {1,       "low",   "1-18",  colors.blue},
@@ -367,7 +384,7 @@ local function drawGrid()
     }
     for _, o in ipairs(outside) do
         local x2 = math.min(o[1] + oW - 1, MW)
-        mfill(o[1], outsideY, x2, outsideY, o[4])
+        mfill(o[1], outsideY, x2, outsideY+1, o[4])
         mwriteC(outsideY, o[3], o[4], colors.white, o[1], x2)
         local amt = betAmountType(o[2])
         if amt > 0 then showBet(o[1], outsideY, amt) end
@@ -375,14 +392,14 @@ local function drawGrid()
 
     -- Result highlight on 0
     if game.phase == "result" and game.result == 0 then
-        mfill(1, GY, ZERO_W, GY + 2, colors.yellow)
-        mwriteC(GY + 1, "0", colors.yellow, colors.black, 1, ZERO_W)
+        mfill(1, GY, ZERO_W, GY + zH - 1, colors.yellow)
+        mwriteC(GY + math.floor(zH / 2), "0", colors.yellow, colors.black, 1, ZERO_W)
     end
 end
 
--- ── Player list (bottom 3 rows) ───────────────────────────────────
+-- ── Player list (bottom 2 rows) ───────────────────────────────────
 local function drawPlayers()
-    local sepY = MH - 2
+    local sepY = MH - 1
     mfill(1, sepY, MW, MH, colors.black)
     mfill(1, sepY, MW, sepY, colors.gray, "-")
 
