@@ -209,18 +209,19 @@ local NUM_W     = math.max(3, math.floor((MW - ZERO_W - COL_BET_W) / NUM_COLS))
 local AW = 5   -- arrow width (bold: 5 chars)
 local AH = 5   -- arrow height (bold: 5 rows)
 
+local AH2 = math.floor(AH / 2)
+
 local function drawArrows(num)
     local bx = 1 + BCELL * CW
-    local label = string.format("[%2d]", num)
     -- Left arrows: >>>>> pointing right toward ball cell
     if bx - AW - 1 >= 1 then
-        for dy = -(AH//2), AH//2 do
+        for dy = -AH2, AH2 do
             mwrite(bx - AW - 1, WMID + dy, string.rep(">", AW), colors.black, colors.yellow)
         end
     end
     -- Right arrows: <<<<< pointing left toward ball cell
     if bx + CW + AW - 1 <= MW then
-        for dy = -(AH//2), AH//2 do
+        for dy = -AH2, AH2 do
             mwrite(bx + CW, WMID + dy, string.rep("<", AW), colors.black, colors.yellow)
         end
     end
@@ -262,12 +263,12 @@ local function drawWheel(offset, stopped, stoppedNum)
         local bx = 1 + BCELL * CW
         -- Extra emphasis: extend arrows by 2 more rows
         if bx - AW - 1 >= 1 then
-            for dy = -(AH//2+1), AH//2+1 do
+            for dy = -(AH2 + 1), AH2 + 1 do
                 mwrite(bx - AW - 1, WMID + dy, string.rep(">", AW), colors.black, colors.yellow)
             end
         end
         if bx + CW + AW - 1 <= MW then
-            for dy = -(AH//2+1), AH//2+1 do
+            for dy = -(AH2 + 1), AH2 + 1 do
                 mwrite(bx + CW, WMID + dy, string.rep("<", AW), colors.black, colors.yellow)
             end
         end
