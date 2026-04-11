@@ -5,6 +5,16 @@
 -- install
 
 local BASE = "https://raw.githubusercontent.com/Sinsan02/CasinoComputerCraft/main/"
+
+-- Self-update: silently overwrite install.lua with the latest version.
+-- The currently running script stays in memory; the new version is used next run.
+do
+    local res = http.get(BASE .. "install.lua")
+    if res then
+        local content = res.readAll(); res.close()
+        local f = fs.open("install.lua", "w"); f.write(content); f.close()
+    end
+end
 local W    = term.getSize()
 
 local function line(char, clr)
