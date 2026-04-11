@@ -147,8 +147,15 @@ local function drawMain()
     header("ROULETTE", phaseClr[st.phase] or colors.gray)
 
     -- Balance and phase
+    local betTotal = 0
+    for _, b in ipairs(st.myBets) do betTotal = betTotal + b.amount end
+    local available = st.balance - betTotal
     term.setCursorPos(1,3); term.setTextColor(colors.yellow)
-    term.write("  Chips: "..st.balance)
+    if betTotal > 0 then
+        term.write("  Chips: "..available.."  [+"..betTotal.." at risk]")
+    else
+        term.write("  Chips: "..st.balance)
+    end
     term.setCursorPos(1,4); term.setTextColor(colors.lightGray)
     if st.phase == "betting" then
         term.write("  Betting open: "..st.betLeft.."s left")
@@ -312,16 +319,14 @@ local function handleTableMsg(raw)
         st.myBets[#st.myBets+1] = {
             btype=msg.btype, bvalue=msg.bvalue, amount=msg.amount
         }
-        st.balance = st.balance - msg.amount
-        st.msg     = "Bet placed: "..betLabel(msg.btype, msg.bvalue)
+        -- Do NOT deduct from balance here. The server delta at round end
+        -- is calculated against the full pre-round balance, so we apply
+        -- it directly to st.balance. Deducting here would cause double loss.
+        st.msg = "Bet placed: "..betLabel(msg.btype, msg.bvalue)
 
     elseif msg.type == "betsCleared" then
-        -- Recalculate balance
-        local refund = 0
-        for _, b in ipairs(st.myBets) do refund = refund + b.amount end
-        st.balance = st.balance + refund
-        st.myBets  = {}
-        st.msg     = "Bets cleared."
+        st.myBets = {}
+        st.msg    = "Bets cleared."
 
     elseif msg.type == "result" then
         st.phase  = "result"

@@ -121,7 +121,7 @@ local function betWins(btype, bvalue, res)
 end
 
 -- ── Animation ─────────────────────────────────────────────────────
-local CW    = 5                                   -- cell width on wheel
+local CW    = 6                                   -- cell width on wheel
 local BCELL = math.floor((MW / CW) / 2)          -- ball cell index (0-based)
 
 local function buildAnim(result)
@@ -187,9 +187,10 @@ local function mwriteC(y, text, bg, fg, x1, x2)
     mwrite(x, y, text, bg, fg)
 end
 
--- ── Wheel strip (rows 3-6) ────────────────────────────────────────
-local WY1, WY2 = 3, 6
-local WBALL_ROW = 4
+-- ── Wheel strip (rows 2-13) ──────────────────────────────────────
+local WY1, WY2 = 2, 13
+local WMID      = math.floor((WY1 + WY2) / 2)   -- middle row of wheel
+local WBALL_ROW = WMID
 
 local function drawWheel(offset, stopped, stoppedNum)
     mfill(1, WY1, MW, WY2, colors.black)
@@ -200,48 +201,63 @@ local function drawWheel(offset, stopped, stoppedNum)
         local num  = WHEEL[wIdx]
         local bg   = numBg(num)
         local isBall = (i == BCELL)
-        local x = 1 + i * CW
+        local x  = 1 + i * CW
+        local x2 = x + CW - 2  -- leave 1 col gap as border
 
         if isBall then
-            -- Ball cell: bright highlight
+            -- Ball cell: bright yellow highlight, full height
             mfill(x, WY1, x + CW - 1, WY2, colors.yellow)
-            mwrite(x,   WY1, string.rep(" ", CW), colors.yellow, colors.yellow)
-            mwrite(x+1, WY2-1, string.format("%2d", num), colors.yellow, colors.black)
-            mwrite(x, WBALL_ROW, string.format(" %2d  ", num):sub(1, CW), colors.yellow, colors.black)
-            -- arrow indicator
-            mwrite(x + math.floor(CW/2), WY1, "v", colors.yellow, colors.red)
+            -- Top arrow row
+            mwriteC(WY1,    string.rep("v", CW - 1), colors.yellow, colors.red,   x, x + CW - 1)
+            -- Bottom arrow row
+            mwriteC(WY2,    string.rep("^", CW - 1), colors.yellow, colors.red,   x, x + CW - 1)
+            -- Number in the middle (large-ish)
+            mwriteC(WMID - 1, string.format("%2d", num), colors.yellow, colors.black, x, x + CW - 1)
+            -- Color label below number
+            local clrLabel = (num == 0) and " GRN " or (RED[num] and " RED " or " BLK ")
+            mwriteC(WMID + 1, clrLabel, colors.yellow, colors.black, x, x + CW - 1)
         else
-            mfill(x, WY1, x + CW - 1, WY2, bg)
-            -- thin border
-            mwrite(x, WY1,      string.rep(" ", CW), colors.black, colors.black)
-            mwrite(x, WY2,      string.rep(" ", CW), colors.black, colors.black)
-            mwrite(x, WBALL_ROW, string.format(" %2d  ", num):sub(1, CW), bg, colors.white)
+            -- Normal cell: colored background, black gap on right
+            mfill(x, WY1, x2, WY2, bg)
+            mfill(x + CW - 1, WY1, x + CW - 1, WY2, colors.black)  -- border gap
+            -- Number centered vertically
+            mwriteC(WMID, string.format("%2d", num), bg, colors.white, x, x2)
         end
     end
 
-    -- Winning flash overlay
-    if stopped and stoppedNum then
-        local bg   = numBg(stoppedNum)
-        local label = string.format("  %2d  ", stoppedNum)
-        mwrite(math.floor(MW/2)-3, WY1,   string.rep("*", 8), colors.black, colors.yellow)
-        mwrite(math.floor(MW/2)-3, WY2,   string.rep("*", 8), colors.black, colors.yellow)
+    -- Top and bottom rail lines (black bg, no content)
+    mfill(1, WY1, MW, WY1, colors.black)
+    mfill(1, WY2, MW, WY2, colors.black)
+
+    -- Winning flash border around ball cell
+    if stopped and stoppedNum ~= nil then
+        local bx = 1 + BCELL * CW
+        mfill(bx, WY1, bx + CW - 2, WY1, colors.yellow)
+        mfill(bx, WY2, bx + CW - 2, WY2, colors.yellow)
+        -- Flash stars on either side
+        if bx > 4 then
+            mwrite(bx - 3, WMID, ">>>", colors.black, colors.yellow)
+        end
+        if bx + CW + 2 <= MW then
+            mwrite(bx + CW, WMID, "<<<", colors.black, colors.yellow)
+        end
     end
 end
 
--- ── Betting grid (rows 8 to MH-8) ────────────────────────────────
+-- ── Betting grid (compact) ────────────────────────────────────────
 -- Layout:
 --  [0] | col 1-36 in 3 rows | [2:1 col bets]
 --  [1st 12] [2nd 12] [3rd 12]
 --  [1-18][Even][Red][Black][Odd][19-36]
 
-local GY        = WY2 + 2                  -- grid start row
+local GY        = WY2 + 2                  -- grid start row (below wheel gap)
 local GH        = MH - GY - 7             -- rows available
 local NUM_ROWS  = 3
 local NUM_COLS  = 12
-local ZERO_W    = 5
-local COL_BET_W = 6
-local NUM_W     = math.max(4, math.floor((MW - ZERO_W - COL_BET_W) / NUM_COLS))
-local NUM_H     = math.max(2, math.floor((GH - 4) / NUM_ROWS))
+local ZERO_W    = 4
+local COL_BET_W = 5
+local NUM_W     = math.max(3, math.floor((MW - ZERO_W - COL_BET_W) / NUM_COLS))
+local NUM_H     = 2                        -- compact: fixed 2-row cells
 
 -- Map number to grid col/row (1-based)
 -- Numbers go: col1=1,4,7,10... col2=2,5,8... col3=3,6,9...
