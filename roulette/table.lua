@@ -1,7 +1,6 @@
 -- roulette/table.lua
--- Fancy Casino Roulette for ComputerCraft
--- Requires: monitor array (4x6 recommended) + wireless modem + casino_db running
--- Shortcut: roulette_table
+-- Casino Roulette — 4x4 monitor, spinning wheel dominates the screen
+-- Requires: 4x4 monitor array + wireless modem + casino_db running
 
 local PROTOCOL       = "roulette"
 local CASINO_PROTO   = "casino"
@@ -71,14 +70,14 @@ end
 
 -- ── Game state ────────────────────────────────────────────────────
 local game = {
-    phase      = "waiting",    -- waiting / betting / spinning / result
-    players    = {},           -- [id] = {id, username, balance}
-    bets       = {},           -- list: {pid, username, btype, bvalue, amount}
+    phase      = "waiting",
+    players    = {},
+    bets       = {},
     result     = nil,
     betLeft    = 0,
     betTimer   = nil,
     resTimer   = nil,
-    payouts    = {},           -- [{username, delta}]
+    payouts    = {},
     animFrames = {},
     animIdx    = 1,
     animTimer  = nil,
@@ -121,8 +120,8 @@ local function betWins(btype, bvalue, res)
 end
 
 -- ── Animation ─────────────────────────────────────────────────────
-local CW    = 6                                   -- cell width on wheel
-local BCELL = math.floor((MW / CW) / 2)          -- ball cell index (0-based)
+local CW    = 6                          -- cell width
+local BCELL = math.floor((MW / CW) / 2) -- ball cell index (0-based)
 
 local function buildAnim(result)
     local rIdx      = wheelIdx(result)
@@ -138,7 +137,6 @@ local function buildAnim(result)
     local endOff = ((startOff - 1 + tot) % WLEN + WLEN) % WLEN + 1
     local extra  = ((targetOff - endOff + WLEN) % WLEN)
     for i = 1, extra do speeds[#speeds+1] = 1 end
-    -- add 2 extra slow frames for drama at the end
     speeds[#speeds+1] = 0
     speeds[#speeds+1] = 0
 
@@ -187,99 +185,90 @@ local function mwriteC(y, text, bg, fg, x1, x2)
     mwrite(x, y, text, bg, fg)
 end
 
--- ── Wheel strip (rows 2-13) ──────────────────────────────────────
-local WY1, WY2 = 2, 13
-local WMID      = math.floor((WY1 + WY2) / 2)   -- middle row of wheel
-local WBALL_ROW = WMID
+-- ── Layout constants ──────────────────────────────────────────────
+-- Row 1:        title bar
+-- Rows 2..MH-9: WHEEL (dominates, ~85% of height)
+-- Row MH-8:     [gap / wheel border]
+-- Rows MH-7..MH-5: compact number grid (3 rows, 1 per roulette row)
+-- Row MH-4:     dozen bets
+-- Row MH-3:     outside bets (1-18 / Even / Red / Black / Odd / 19-36)
+-- Row MH-2:     separator
+-- Rows MH-1..MH: player list
 
+local WY1  = 2
+local WY2  = MH - 9
+local WMID = math.floor((WY1 + WY2) / 2)
+
+local GY        = WY2 + 2        -- number grid starts here
+local NUM_ROWS  = 3
+local NUM_COLS  = 12
+local ZERO_W    = 3
+local COL_BET_W = 4
+local NUM_W     = math.max(3, math.floor((MW - ZERO_W - COL_BET_W) / NUM_COLS))
+
+-- ── Wheel (full-height, dominant) ─────────────────────────────────
 local function drawWheel(offset, stopped, stoppedNum)
     mfill(1, WY1, MW, WY2, colors.black)
 
     local cells = math.floor(MW / CW)
     for i = 0, cells - 1 do
-        local wIdx = ((offset - 1 + i) % WLEN + WLEN) % WLEN + 1
-        local num  = WHEEL[wIdx]
-        local bg   = numBg(num)
+        local wIdx   = ((offset - 1 + i) % WLEN + WLEN) % WLEN + 1
+        local num    = WHEEL[wIdx]
+        local bg     = numBg(num)
         local isBall = (i == BCELL)
-        local x  = 1 + i * CW
-        local x2 = x + CW - 2  -- leave 1 col gap as border
+        local x      = 1 + i * CW
+        local x2     = x + CW - 2  -- right border gap
 
         if isBall then
-            -- Ball cell: bright yellow highlight, full height
+            -- Full-height yellow highlight for ball position
             mfill(x, WY1, x + CW - 1, WY2, colors.yellow)
-            -- Top arrow row
-            mwriteC(WY1,    string.rep("v", CW - 1), colors.yellow, colors.red,   x, x + CW - 1)
-            -- Bottom arrow row
-            mwriteC(WY2,    string.rep("^", CW - 1), colors.yellow, colors.red,   x, x + CW - 1)
-            -- Number in the middle (large-ish)
-            mwriteC(WMID - 1, string.format("%2d", num), colors.yellow, colors.black, x, x + CW - 1)
-            -- Color label below number
+            -- Top half: downward arrows pointing at the number
+            for y = WY1 + 1, WMID - 2 do
+                mwriteC(y, "v", colors.yellow, colors.red, x, x + CW - 1)
+            end
+            -- Number and color label at center
+            mwriteC(WMID - 1, string.format(" %2d ", num), colors.yellow, colors.black, x, x + CW - 1)
             local clrLabel = (num == 0) and " GRN " or (RED[num] and " RED " or " BLK ")
-            mwriteC(WMID + 1, clrLabel, colors.yellow, colors.black, x, x + CW - 1)
+            mwriteC(WMID,     clrLabel,                   colors.yellow, colors.black, x, x + CW - 1)
+            -- Bottom half: upward arrows
+            for y = WMID + 2, WY2 - 1 do
+                mwriteC(y, "^", colors.yellow, colors.red, x, x + CW - 1)
+            end
         else
-            -- Normal cell: colored background, black gap on right
-            mfill(x, WY1, x2, WY2, bg)
-            mfill(x + CW - 1, WY1, x + CW - 1, WY2, colors.black)  -- border gap
-            -- Number centered vertically
+            -- Normal cell: color block with number in the middle
+            mfill(x,          WY1, x2,          WY2, bg)
+            mfill(x + CW - 1, WY1, x + CW - 1, WY2, colors.black)  -- right gap
             mwriteC(WMID, string.format("%2d", num), bg, colors.white, x, x2)
         end
     end
 
-    -- Top and bottom rail lines (black bg, no content)
+    -- Black top/bottom rail rows
     mfill(1, WY1, MW, WY1, colors.black)
     mfill(1, WY2, MW, WY2, colors.black)
 
-    -- Winning flash border around ball cell
+    -- Result: side arrows + top/bottom flash on ball cell
     if stopped and stoppedNum ~= nil then
         local bx = 1 + BCELL * CW
         mfill(bx, WY1, bx + CW - 2, WY1, colors.yellow)
         mfill(bx, WY2, bx + CW - 2, WY2, colors.yellow)
-        -- Flash stars on either side
         if bx > 4 then
-            mwrite(bx - 3, WMID, ">>>", colors.black, colors.yellow)
+            for dy = -1, 1 do
+                mwrite(bx - 3, WMID + dy, ">>>", colors.black, colors.yellow)
+            end
         end
         if bx + CW + 2 <= MW then
-            mwrite(bx + CW, WMID, "<<<", colors.black, colors.yellow)
+            for dy = -1, 1 do
+                mwrite(bx + CW, WMID + dy, "<<<", colors.black, colors.yellow)
+            end
         end
     end
 end
 
--- ── Betting grid (compact) ────────────────────────────────────────
--- Layout:
---  [0] | col 1-36 in 3 rows | [2:1 col bets]
---  [1st 12] [2nd 12] [3rd 12]
---  [1-18][Even][Red][Black][Odd][19-36]
-
-local GY        = WY2 + 2                  -- grid start row (below wheel gap)
-local GH        = MH - GY - 7             -- rows available
-local NUM_ROWS  = 3
-local NUM_COLS  = 12
-local ZERO_W    = 4
-local COL_BET_W = 5
-local NUM_W     = math.max(3, math.floor((MW - ZERO_W - COL_BET_W) / NUM_COLS))
-local NUM_H     = 2                        -- compact: fixed 2-row cells
-
--- Map number to grid col/row (1-based)
--- Numbers go: col1=1,4,7,10... col2=2,5,8... col3=3,6,9...
--- But standard roulette: top row col1=3,6,9...36; mid=2,5,8...35; bot=1,4,7...34
-local function numGridPos(n)
-    if n == 0 then return nil end
-    local col = math.ceil(n / 3)
-    local row = 4 - (n % 3 == 0 and 3 or n % 3)
-    return col, row
-end
-
--- Pixel position of a number cell
-local function numCellX(col) return ZERO_W + 1 + (col-1) * NUM_W end
-local function numCellY(row) return GY + (row-1) * NUM_H end
-
--- Sum bets of a given type/value for display
+-- ── Compact bet grid ──────────────────────────────────────────────
 local function betAmount(btype, bvalue)
     local sum = 0
     for _, b in ipairs(game.bets) do
-        if b.btype == btype and b.bvalue == bvalue then
-            sum = sum + b.amount
-        end
+        if b.btype == btype and b.bvalue == bvalue then sum = sum + b.amount end
     end
     return sum
 end
@@ -292,112 +281,112 @@ local function betAmountType(btype)
     return sum
 end
 
-local function drawBetChips(x, y, w, h, amount)
+local function showBet(x, y, amount)
     if amount <= 0 then return end
-    -- Show a small chip stack indicator
-    local cx = x + math.floor(w/2)
-    local cy = y + math.floor(h/2)
-    mon.setCursorPos(cx, cy)
+    mon.setCursorPos(x, y)
     mon.setBackgroundColor(colors.yellow)
     mon.setTextColor(colors.black)
-    local s = tostring(amount)
-    if #s > w-1 then s = "+" end
-    mon.write(s)
-    mon.setBackgroundColor(colors.black)
+    mon.write(tostring(amount))
 end
 
+local function numGridPos(n)
+    if n == 0 then return nil end
+    local col = math.ceil(n / 3)
+    local row = 4 - (n % 3 == 0 and 3 or n % 3)
+    return col, row
+end
+
+local function numCellX(col) return ZERO_W + 1 + (col - 1) * NUM_W end
+local function numCellY(row) return GY + (row - 1) end  -- 1 row per cell
+
 local function drawGrid()
-    -- Background
-    mfill(1, GY, MW, GY + NUM_ROWS * NUM_H + 4, colors.green)
+    -- Background: 3 number rows + 1 dozen + 1 outside = 5 rows
+    mfill(1, GY, MW, GY + 4, colors.green)
 
-    -- 0 cell
-    local zH = NUM_ROWS * NUM_H
-    mfill(1, GY, ZERO_W, GY + zH - 1, colors.lime)
-    mwriteC(GY + math.floor(zH/2), "0", colors.lime, colors.white, 1, ZERO_W)
+    -- 0 cell (spans all 3 number rows on the left)
+    mfill(1, GY, ZERO_W, GY + 2, colors.lime)
+    mwriteC(GY + 1, "0", colors.lime, colors.white, 1, ZERO_W)
     local za = betAmount("number", 0)
-    if za > 0 then drawBetChips(1, GY, ZERO_W, zH, za) end
+    if za > 0 then showBet(2, GY + 1, za) end
 
-    -- Number cells
+    -- Number cells (1 row each)
     for n = 1, 36 do
         local col, row = numGridPos(n)
-        local x = numCellX(col)
-        local y = numCellY(row)
-        local bg = numBg(n)
-        local isResult = (game.phase == "result" and game.result == n)
+        local x   = numCellX(col)
+        local y   = numCellY(row)
+        local bg  = numBg(n)
+        local isR = (game.phase == "result" and game.result == n)
+        local cbg = isR and colors.yellow or bg
+        local cfg = isR and colors.black  or colors.white
 
-        mfill(x, y, x + NUM_W - 2, y + NUM_H - 2, isResult and colors.yellow or bg)
-        -- border
-        mwrite(x + NUM_W - 1, y,            " ", colors.green, colors.green)
-        mwrite(x,             y + NUM_H - 1, string.rep(" ", NUM_W), colors.green, colors.green)
-
-        local lbl = string.format("%-" .. (NUM_W-1) .. "s", tostring(n)):sub(1, NUM_W-1)
-        mwrite(x, y, lbl, isResult and colors.yellow or bg, isResult and colors.black or colors.white)
-
+        mfill(x, y, x + NUM_W - 2, y, cbg)
+        mfill(x + NUM_W - 1, y, x + NUM_W - 1, y, colors.green)  -- gap
+        local lbl = string.format("%-" .. (NUM_W - 1) .. "s", tostring(n)):sub(1, NUM_W - 1)
+        mwrite(x, y, lbl, cbg, cfg)
         local amt = betAmount("number", n)
-        if amt > 0 then drawBetChips(x, y, NUM_W-1, NUM_H-1, amt) end
+        if amt > 0 then showBet(x + NUM_W - 2, y, amt) end
     end
 
-    -- Column bets (right side)
+    -- Column bets (right side, 1 row each)
     local cbX = ZERO_W + NUM_COLS * NUM_W + 1
-    local colBets = {{"col3","2:1",colors.yellow},{"col2","2:1",colors.yellow},{"col1","2:1",colors.yellow}}
+    local colBets = {{"col3","2:1"},{"col2","2:1"},{"col1","2:1"}}
     for i, cb in ipairs(colBets) do
         local y = numCellY(i)
-        mfill(cbX, y, cbX + COL_BET_W - 2, y + NUM_H - 2, cb[3])
-        mwriteC(y, cb[2], cb[3], colors.black, cbX, cbX + COL_BET_W - 2)
+        mfill(cbX, y, cbX + COL_BET_W - 1, y, colors.yellow)
+        mwriteC(y, cb[2], colors.yellow, colors.black, cbX, cbX + COL_BET_W - 1)
         local amt = betAmountType(cb[1])
-        if amt > 0 then drawBetChips(cbX, y, COL_BET_W-1, NUM_H-1, amt) end
+        if amt > 0 then showBet(cbX, y, amt) end
     end
 
-    -- Dozen row
-    local dozenY = GY + NUM_ROWS * NUM_H
-    local dW     = math.floor((MW - ZERO_W - COL_BET_W) / 3)
+    -- Dozen row (row GY+3)
+    local dozenY = GY + NUM_ROWS
+    local dW = math.floor((MW - ZERO_W - COL_BET_W) / 3)
     local dozens = {
-        {ZERO_W+1,         dW,   "dozen1","1st 12",colors.cyan},
-        {ZERO_W+dW+1,      dW,   "dozen2","2nd 12",colors.cyan},
-        {ZERO_W+dW*2+1,    dW-1, "dozen3","3rd 12",colors.cyan},
+        {ZERO_W+1,        dW,                             "dozen1","1st 12",colors.cyan},
+        {ZERO_W+dW+1,     dW,                             "dozen2","2nd 12",colors.cyan},
+        {ZERO_W+dW*2+1,   MW - ZERO_W - COL_BET_W - dW*2,"dozen3","3rd 12",colors.cyan},
     }
     for _, d in ipairs(dozens) do
-        mfill(d[1], dozenY, d[1]+d[2]-1, dozenY+1, d[5])
+        mfill(d[1], dozenY, d[1]+d[2]-1, dozenY, d[5])
         mwriteC(dozenY, d[4], d[5], colors.white, d[1], d[1]+d[2]-1)
         local amt = betAmountType(d[3])
-        if amt > 0 then drawBetChips(d[1], dozenY, d[2], 2, amt) end
+        if amt > 0 then showBet(d[1], dozenY, amt) end
     end
+    mfill(cbX, dozenY, cbX + COL_BET_W - 1, dozenY, colors.black)
 
-    -- Outside bets row
-    local outsideY = dozenY + 2
+    -- Outside bets (row GY+4)
+    local outsideY = dozenY + 1
     local oW = math.floor(MW / 6)
     local outside = {
-        {1,           "low",   "1-18",  colors.blue},
-        {oW+1,        "even",  "Even",  colors.blue},
-        {oW*2+1,      "red",   "Red",   colors.red},
-        {oW*3+1,      "black", "Black", colors.gray},
-        {oW*4+1,      "odd",   "Odd",   colors.blue},
-        {oW*5+1,      "high",  "19-36", colors.blue},
+        {1,       "low",   "1-18",  colors.blue},
+        {oW+1,    "even",  "Even",  colors.blue},
+        {oW*2+1,  "red",   "Red",   colors.red},
+        {oW*3+1,  "black", "Black", colors.gray},
+        {oW*4+1,  "odd",   "Odd",   colors.blue},
+        {oW*5+1,  "high",  "19-36", colors.blue},
     }
     for _, o in ipairs(outside) do
-        local x2 = o[1] + oW - 1
-        mfill(o[1], outsideY, x2, outsideY+1, o[4])
+        local x2 = math.min(o[1] + oW - 1, MW)
+        mfill(o[1], outsideY, x2, outsideY, o[4])
         mwriteC(outsideY, o[3], o[4], colors.white, o[1], x2)
         local amt = betAmountType(o[2])
-        if amt > 0 then drawBetChips(o[1], outsideY, oW, 2, amt) end
+        if amt > 0 then showBet(o[1], outsideY, amt) end
     end
 
     -- Result highlight on 0
     if game.phase == "result" and game.result == 0 then
-        mfill(1, GY, ZERO_W, GY + zH - 1, colors.yellow)
-        mwriteC(GY + math.floor(zH/2), "0", colors.yellow, colors.black, 1, ZERO_W)
+        mfill(1, GY, ZERO_W, GY + 2, colors.yellow)
+        mwriteC(GY + 1, "0", colors.yellow, colors.black, 1, ZERO_W)
     end
 end
 
--- ── Player list (bottom) ──────────────────────────────────────────
+-- ── Player list (bottom 3 rows) ───────────────────────────────────
 local function drawPlayers()
-    local y = MH - 5
-    mfill(1, y, MW, MH, colors.black)
-    mfill(1, y, MW, y, colors.gray, "-")
-    y = y + 1
+    local sepY = MH - 2
+    mfill(1, sepY, MW, MH, colors.black)
+    mfill(1, sepY, MW, sepY, colors.gray, "-")
 
-    local col = 1
-    local perCol = math.floor(MW / 28)
+    local perCol = math.max(1, math.floor(MW / 30))
     local colW   = math.floor(MW / perCol)
     local count  = 0
 
@@ -406,21 +395,17 @@ local function drawPlayers()
         for _, b in ipairs(game.bets) do
             if b.pid == p.id then bTotal = bTotal + b.amount end
         end
-        local line = string.format("%-10s %5d chips", p.username:sub(1,10), p.balance)
-        if bTotal > 0 then
-            line = line .. " [bet:" .. bTotal .. "]"
-        end
-        -- Find payout for last round
+        local line = string.format("%-10s %5d", p.username:sub(1,10), p.balance)
+        if bTotal > 0 then line = line .. " b:" .. bTotal end
         for _, po in ipairs(game.payouts) do
             if po.username == p.username then
-                local sign = po.delta >= 0 and "+" or ""
-                line = line .. " " .. sign .. po.delta
+                line = line .. (po.delta >= 0 and " +" or " ") .. po.delta
             end
         end
-        local x = (count % perCol) * colW + 1
-        local py = y + math.floor(count / perCol)
+        local px = (count % perCol) * colW + 1
+        local py = sepY + 1 + math.floor(count / perCol)
         if py <= MH then
-            mwrite(x, py, line:sub(1, colW), colors.black,
+            mwrite(px, py, line:sub(1, colW), colors.black,
                 bTotal > 0 and colors.cyan or colors.lightGray)
         end
         count = count + 1
@@ -435,30 +420,18 @@ local function drawAll()
     -- Title bar
     mfill(1, 1, MW, 1, colors.yellow)
     local phase_labels = {
-        waiting  = "WAITING FOR PLAYERS",
-        betting  = "PLACE YOUR BETS!  " .. game.betLeft .. "s",
-        spinning = "NO MORE BETS - SPINNING...",
+        waiting  = "* ROULETTE * TOUCH TO START *",
+        betting  = ">> PLACE YOUR BETS!  " .. game.betLeft .. "s <<",
+        spinning = "*** NO MORE BETS  -  SPINNING! ***",
         result   = game.result ~= nil and ("RESULT: " .. game.result ..
-            (game.result == 0 and " (GREEN)" or
-             RED[game.result] and " (RED)"    or " (BLACK)")) or "RESULT",
+            (game.result == 0 and "  GREEN!" or
+             RED[game.result] and "  RED!"   or "  BLACK!")) or "RESULT",
     }
     mwriteC(1, phase_labels[game.phase] or game.phase:upper(), colors.yellow, colors.black)
 
-    -- Wheel
-    drawWheel(
-        game.animOffset,
-        game.phase == "result",
-        game.result
-    )
-
-    -- Grid
+    drawWheel(game.animOffset, game.phase == "result", game.result)
     drawGrid()
-
-    -- Players
     drawPlayers()
-
-    -- Dealer hint (bottom-right)
-    mwrite(MW-20, MH, "  [TOUCH] New round  ", colors.black, colors.gray)
 end
 
 -- ── Terminal ──────────────────────────────────────────────────────
@@ -496,43 +469,31 @@ local function startBetting()
     if game.betTimer then os.cancelTimer(game.betTimer) end
     game.betTimer = os.startTimer(1)
     broadcast({type="phase", phase="betting", betLeft=game.betLeft})
-    drawAll()
-    drawTerminal()
+    drawAll(); drawTerminal()
 end
 
 local function startSpinning()
     game.phase = "spinning"
     if game.betTimer then os.cancelTimer(game.betTimer) end
     game.betTimer = nil
-
-    -- Choose result
-    game.result = WHEEL[math.random(1, WLEN)]
-
-    -- Build animation
+    game.result     = WHEEL[math.random(1, WLEN)]
     game.animFrames = buildAnim(game.result)
     game.animIdx    = 1
     game.animOffset = game.animFrames[1]
-
     if game.animTimer then os.cancelTimer(game.animTimer) end
-    local delay = ANIM_DELAYS[1] or 0.04
-    game.animTimer = os.startTimer(delay)
-
+    game.animTimer = os.startTimer(ANIM_DELAYS[1] or 0.04)
     broadcast({type="phase", phase="spinning"})
-    drawAll()
-    drawTerminal()
+    drawAll(); drawTerminal()
 end
 
 local function finishRound()
     game.phase = "result"
     if game.animTimer then os.cancelTimer(game.animTimer) end
     game.animTimer = nil
-
-    -- Set final wheel offset to show result
     local rIdx = wheelIdx(game.result)
     game.animOffset = ((rIdx - BCELL - 1) % WLEN + WLEN) % WLEN + 1
 
-    -- Calculate payouts
-    local totals = {}  -- username -> net delta
+    local totals = {}
     for _, b in ipairs(game.bets) do
         totals[b.username] = totals[b.username] or 0
         if betWins(b.btype, b.bvalue, game.result) then
@@ -546,9 +507,7 @@ local function finishRound()
     game.payouts = {}
     for username, delta in pairs(totals) do
         game.payouts[#game.payouts+1] = {username=username, delta=delta}
-        -- Update casino DB
         updateChips(username, delta)
-        -- Update local balance
         for _, p in pairs(game.players) do
             if p.username == username then
                 p.balance = math.max(0, p.balance + delta)
@@ -556,28 +515,20 @@ local function finishRound()
         end
     end
 
-    broadcast({
-        type    = "result",
-        result  = game.result,
-        payouts = game.payouts,
-    })
-
+    broadcast({type="result", result=game.result, payouts=game.payouts})
     if game.resTimer then os.cancelTimer(game.resTimer) end
     game.resTimer = os.startTimer(RESULT_SECONDS)
-
-    drawAll()
-    drawTerminal()
+    drawAll(); drawTerminal()
 end
 
 local function resetToWaiting()
-    game.phase   = "waiting"
-    game.bets    = {}
-    game.result  = nil
+    game.phase  = "waiting"
+    game.bets   = {}
+    game.result = nil
     if game.resTimer then os.cancelTimer(game.resTimer) end
     game.resTimer = nil
     broadcast({type="phase", phase="waiting"})
-    drawAll()
-    drawTerminal()
+    drawAll(); drawTerminal()
 end
 
 -- ── Network handler ───────────────────────────────────────────────
@@ -588,14 +539,12 @@ local function handleMsg(sid, raw)
     if msg.type == "join" then
         local username = msg.username
         if not username then return end
-        -- Already joined?
         if game.players[sid] then
             sendTo(sid, {type="joined", username=username,
                 balance=game.players[sid].balance,
                 phase=game.phase, betLeft=game.betLeft})
             return
         end
-        -- Get balance from casino DB
         local bal = getBalance(username) or 0
         game.players[sid] = {id=sid, username=username, balance=bal}
         sendTo(sid, {type="joined", username=username, balance=bal,
@@ -616,8 +565,6 @@ local function handleMsg(sid, raw)
         if amount < MIN_BET then
             sendTo(sid, {type="error", msg="Minimum bet is "..MIN_BET}); return
         end
-
-        -- Check player can afford total bets
         local currentBets = 0
         for _, b in ipairs(game.bets) do
             if b.pid == sid then currentBets = currentBets + b.amount end
@@ -653,7 +600,7 @@ local function handleMsg(sid, raw)
     end
 end
 
--- ── Main loop ────────────────────────────────────────────────────
+-- ── Main loop ─────────────────────────────────────────────────────
 drawAll()
 drawTerminal()
 
@@ -668,8 +615,7 @@ while true do
             else
                 game.betTimer = os.startTimer(1)
                 broadcast({type="betLeft", betLeft=game.betLeft})
-                drawAll()
-                drawTerminal()
+                drawAll(); drawTerminal()
             end
 
         elseif a == game.animTimer and game.phase == "spinning" then
@@ -689,9 +635,7 @@ while true do
 
     elseif ev == "rednet_message" then
         local sid, raw, proto = a, b, c
-        if proto == PROTOCOL then
-            handleMsg(sid, raw)
-        end
+        if proto == PROTOCOL then handleMsg(sid, raw) end
 
     elseif ev == "monitor_touch" or (ev == "key" and a == keys.enter) then
         if game.phase == "waiting" then
