@@ -86,10 +86,15 @@ local function handle(req, db)
         return {ok=true, chips=u.chips}
 
     elseif t == "update_chips" then
-        -- Used by poker dealer to update chips after a game
+        -- Used by games to update chips after a round/game
         local u = db.users[req.username]
         if not u then return {ok=false} end
-        u.chips = math.max(0, u.chips + req.delta)
+        -- CASINO house account can go negative (tracks net P&L)
+        if u.is_casino then
+            u.chips = u.chips + req.delta
+        else
+            u.chips = math.max(0, u.chips + req.delta)
+        end
         saveDB(db)
         return {ok=true, chips=u.chips}
 
@@ -127,6 +132,20 @@ print("Protocol: " .. PROTOCOL)
 print("")
 
 local db = loadDB()
+
+-- Ensure CASINO house account exists (created once, never via register)
+if not db.users["CASINO"] then
+    db.users["CASINO"] = {
+        password  = "",
+        chips     = 0,
+        is_admin  = false,
+        is_casino = true,
+    }
+    saveDB(db)
+    term.setTextColor(colors.yellow)
+    print("Created CASINO house account")
+end
+
 local userCount = 0
 for _ in pairs(db.users) do userCount = userCount + 1 end
 term.setTextColor(colors.white)

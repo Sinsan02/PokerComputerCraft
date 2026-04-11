@@ -522,14 +522,20 @@ local function finishRound()
     end
 
     game.payouts = {}
+    local casinoDelta = 0
     for username, delta in pairs(totals) do
         game.payouts[#game.payouts+1] = {username=username, delta=delta}
         updateChips(username, delta)
+        casinoDelta = casinoDelta - delta   -- casino gains losses, pays winnings
         for _, p in pairs(game.players) do
             if p.username == username then
                 p.balance = math.max(0, p.balance + delta)
             end
         end
+    end
+    -- Update casino house account (negative delta = casino paid out winnings)
+    if casinoDelta ~= 0 then
+        updateChips("CASINO", casinoDelta)
     end
 
     broadcast({type="result", result=game.result, payouts=game.payouts})
